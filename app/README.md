@@ -9,6 +9,14 @@ npm install
 npm run dev
 ```
 
+## macOS 다운로드용 앱 만들기
+
+```bash
+npm run package:mac
+```
+
+생성 결과는 `release/Do it Widget-0.1.0.dmg`와 `release/mac/Do it Widget.app`입니다. 현재 빌드는 Apple 개발자 서명·공증 전의 로컬 테스트용 unsigned 앱입니다.
+
 ## 현재 범위
 
 - 접힘 기본, hover 시 남은 할 일 개수, 클릭 시 전체 목록
