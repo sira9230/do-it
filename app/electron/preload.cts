@@ -1,0 +1,22 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type { AppState, Priority, Settings, Task } from './types.js';
+
+contextBridge.exposeInMainWorld('doit', {
+  getState: (): Promise<AppState> => ipcRenderer.invoke('state:get'),
+  createTask: (input: {
+    title: string;
+    summary: string;
+    priority: Priority;
+    plannedDate: string;
+    reminderAt: string | null;
+  }): Promise<Task> => ipcRenderer.invoke('task:create', input),
+  toggleTask: (id: string): Promise<Task> => ipcRenderer.invoke('task:toggle', id),
+  updateSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:update', patch),
+  setExpanded: (expanded: boolean): Promise<void> => ipcRenderer.invoke('window:expand', expanded),
+  resetWindowPosition: (): Promise<void> => ipcRenderer.invoke('window:reset-position'),
+  onStateChanged: (callback: (state: AppState) => void) => {
+    const handler = (_event: unknown, state: AppState) => callback(state);
+    ipcRenderer.on('state:changed', handler);
+    return () => ipcRenderer.removeListener('state:changed', handler);
+  },
+});
