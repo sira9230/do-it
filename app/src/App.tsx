@@ -4,7 +4,7 @@ import type { AppState, CalendarEvent, Priority, Task } from './types';
 const priorityMeta: Record<Priority, { label: string; meaning: string }> = {
   P1: { label: '개중요', meaning: '높음' },
   P2: { label: '챙겨두자', meaning: '보통' },
-  P3: { label: '천천히', meaning: '낮음' },
+  P3: { label: '천처니', meaning: '낮음' },
 };
 
 const emptyState: AppState = {

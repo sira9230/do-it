@@ -58,10 +58,21 @@ button { cursor: pointer; }
 
 .check { width: 20px; height: 20px; display: grid; place-items: center; flex: 0 0 auto; padding: 0; color: #fff; background: #fff; border: 1.5px solid #b0b8c1; border-radius: 6px; font-size: 13px; }
 .check.done { background: var(--blue); border-color: var(--blue); }
-.priority { font-size: 11px; font-weight: 650; white-space: nowrap; }
-.p1 { color: var(--p1); }
-.p2 { color: var(--p2); }
-.p3 { color: var(--p3); }
+.priority {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.p1 { color: #b91c1c; background: #fef2f2; }
+.p2 { color: #1d4ed8; background: #eff6ff; }
+.p3 { color: #475569; background: #f1f5f9; }
 .icon { width: 36px; height: 36px; padding: 0; color: var(--muted); background: transparent; border: 0; border-radius: 10px; }
 .icon:hover { background: var(--soft); }
 .chevron { display: inline-block; font-size: 19px; transition: transform 150ms; }
