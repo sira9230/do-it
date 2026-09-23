@@ -420,6 +420,15 @@ ipcMain.handle('window:preview-hover', (_event, hovered: boolean, count: number)
   widgetWindow.setResizable(false);
   positionHoverWindow();
 });
+ipcMain.handle('window:move', (_event, x: number, y: number) => {
+  if (!widgetWindow || windowExpanded || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const bounds = widgetWindow.getBounds();
+  const area = screen.getDisplayMatching({ x: Math.round(x), y: Math.round(y), width: bounds.width, height: bounds.height }).workArea;
+  widgetWindow.setPosition(
+    Math.min(Math.max(Math.round(x), area.x), area.x + area.width - bounds.width),
+    Math.min(Math.max(Math.round(y), area.y), area.y + area.height - bounds.height),
+  );
+});
 ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
   state.settings = { ...state.settings, ...patch };
   widgetWindow?.setAlwaysOnTop(state.settings.alwaysOnTop);

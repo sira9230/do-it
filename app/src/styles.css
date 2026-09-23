@@ -110,7 +110,8 @@ button { cursor: pointer; }
 .brand { height: auto; padding: 0; border: 0; background: transparent; }
 .bosongi { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; }
 .bosongi img { width: 100%; height: 100%; object-fit: contain; }
-.preview-card { position: absolute; top: 5px; left: 34px; width: calc(100% - 40px); height: 52px; display: flex; align-items: center; gap: 8px; padding: 7px 12px; overflow: hidden; border: 0; border-radius: 21px; background: var(--card); color: var(--foreground); text-align: left; box-shadow: 0 12px 42px oklch(0 0 0 / .05); transform-origin: center top; cursor: pointer; }
+.preview-card { position: absolute; top: 5px; left: 34px; width: calc(100% - 40px); height: 52px; display: flex; align-items: center; gap: 8px; padding: 7px 12px; overflow: hidden; border: 0; border-radius: 21px; background: var(--card); color: var(--foreground); text-align: left; box-shadow: 0 12px 42px oklch(0 0 0 / .05); transform-origin: center top; cursor: grab; touch-action: none; }
+.preview-card:active { cursor: grabbing; }
 .preview-card.current { box-shadow: 0 15px 55px oklch(0 0 0 / .065); }
 .preview-card.current .bosongi, .preview-empty .bosongi { width: 22px; height: 22px; }
 .preview-card.next { box-shadow: 0 12px 42px oklch(0 0 0 / .04); }
@@ -190,6 +191,7 @@ button { cursor: pointer; }
 .add label, .add legend { display: block; width: 100%; color: var(--muted-foreground); font-size: 12px; font-weight: 600; line-height: 1.45; white-space: normal; }
 .add input, .add textarea { display: block; width: 100%; margin-top: 7px; padding-top: 10px; padding-bottom: 10px; color: var(--foreground); background: var(--background); font-size: 14px; font-weight: 400; line-height: 1.5; resize: none; }
 .add input { min-height: 42px; white-space: normal; }
+.add .reminder-input::placeholder { color: oklch(0.75 0.01 260); opacity: 1; }
 .add textarea { overflow-wrap: anywhere; word-break: keep-all; }
 .add textarea { min-height: 88px; }
 .add fieldset { padding: 0; margin: 0; border: 0; }
@@ -230,6 +232,7 @@ button { cursor: pointer; }
 .sync { display: flex; justify-content: space-between; padding: 12px; margin-top: 12px; color: var(--muted-foreground); background: var(--muted); border-radius: var(--radius-lg); font-size: 11px; }
 .sync strong { color: var(--foreground); font-weight: 500; }
 .undo-toast { position: absolute; bottom: 13px; left: 13px; right: 13px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 15px; background: var(--foreground); color: var(--background); box-shadow: 0 16px 55px oklch(0 0 0 / .10); font-size: 12px; }
-.undo-toast button { color: var(--background); font-size: 12px; font-weight: 650; }
+.undo-toast .undo-action { min-height: 30px; padding: 5px 10px; border-radius: 10px; background: var(--background); color: var(--foreground); font-size: 12px; font-weight: 600; }
+.undo-toast .undo-action:hover { background: var(--muted); color: var(--foreground); }
 
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

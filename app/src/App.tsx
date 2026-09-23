@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { AppState, CalendarEvent, Priority, Task } from './types';
+import { formatReminderInput, parseReminderInput } from './reminder';
 
 const priorityMeta: Record<Priority, { label: string; meaning: string }> = {
   P1: { label: '중요', meaning: '높음' },
@@ -171,7 +172,7 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
   }
 
   return <form className="page add" onSubmit={submit}>
-    <div className="heading"><h2>할 일 수정</h2><Button type="button" variant="ghost" className="text" onClick={onClose}>취소</Button></div>
+    <div className="heading"><h2>할 일 수정</h2><Button type="button" variant="ghost" className="add-trigger" onClick={onClose}>취소</Button></div>
     <Label>할 일<Input autoFocus maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} /></Label>
     {task.notionBlockId ? <div className="edit-context"><strong>설명 · 상위 항목</strong><p>{task.summary || '상위 항목이 없어요.'}</p><small>상위 항목은 Notion 회의록에서 변경할 수 있어요.</small></div>
       : <Label>짧은 설명<Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>}
@@ -187,45 +188,36 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
   const [priority, setPriority] = useState<Priority>('P2');
   const [reminder, setReminder] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [notionPageId, setNotionPageId] = useState<string | null>(null);
-
-  function parsedReminder(): string | null {
-    if (!reminder.trim()) return null;
-    const match = /^(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})$/.exec(reminder.trim());
-    if (!match) throw new Error('리마인드를 YYYY.MM.DD 00:00 형식으로 입력해주세요.');
-    const [, year, month, day, hour, minute] = match;
-    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
-    if (date.getFullYear() !== Number(year) || date.getMonth() + 1 !== Number(month) || date.getDate() !== Number(day)
-      || date.getHours() !== Number(hour) || date.getMinutes() !== Number(minute) || date.getTime() <= Date.now()) {
-      throw new Error('현재보다 뒤의 올바른 날짜와 시간을 입력해주세요.');
-    }
-    return date.toISOString();
-  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (saving) return;
     if (!title.trim()) {
       setError('할 일을 입력해주세요.');
       return;
     }
+    setSaving(true);
+    setError('');
     try {
       await window.doit.createTask({
         title,
         summary,
         priority,
         plannedDate: localDate(),
-        reminderAt: parsedReminder(),
+        reminderAt: parseReminderInput(reminder),
         notionPageId,
       });
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '저장하지 못했어요.');
-    }
+    } finally { setSaving(false); }
   }
 
   return (
     <form className="page add" onSubmit={submit}>
-      <div className="heading"><h2>할 일 추가</h2><Button type="button" variant="ghost" className="text" onClick={onClose}>취소</Button></div>
+      <div className="heading"><h2>할 일 추가</h2><Button type="button" variant="ghost" className="add-trigger" onClick={onClose}>취소</Button></div>
       <Label>할 일<Input autoFocus maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="무엇을 해볼까요?" /></Label>
       <Label>짧은 설명<Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>
       <fieldset>
@@ -248,11 +240,11 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
       </fieldset> : null}
       <Label>
         리마인드 <span className="optional">선택</span>
-        <Input type="text" inputMode="numeric" placeholder="YYYY.MM.DD 00:00" value={reminder} onChange={(event) => setReminder(event.target.value)} aria-label="리마인드 날짜와 시간" />
+        <Input type="text" inputMode="numeric" className="reminder-input" placeholder="MM.DD 00:00" value={reminder} onChange={(event) => setReminder(formatReminderInput(event.target.value))} aria-label="리마인드 날짜와 시간" />
       </Label>
       <p className="form-help">설정한 시간에 macOS 알림으로 알려드려요.</p>
       {error ? <p className="error" role="alert">{error}</p> : null}
-      <Button className="primary">오늘 할 일로 추가</Button>
+      <Button type="submit" className="primary" disabled={saving}>{saving ? '추가 중…' : '오늘 할 일로 추가'}</Button>
     </form>
   );
 }
@@ -330,6 +322,8 @@ export function App() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [now, setNow] = useState(new Date());
   const lastDragAt = useRef(0);
+  const previewDrag = useRef<{ screenX: number; screenY: number; windowX: number; windowY: number; moved: boolean } | null>(null);
+  const suppressPreviewClick = useRef(false);
 
   useEffect(() => {
     window.doit.getState().then((next) => { setState(next); setLoaded(true); });
@@ -402,6 +396,31 @@ export function App() {
     collapse();
   }
 
+  function startPreviewDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    suppressPreviewClick.current = false;
+    previewDrag.current = { screenX: event.screenX, screenY: event.screenY, windowX: window.screenX, windowY: window.screenY, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function movePreview(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = previewDrag.current;
+    if (!drag) return;
+    const dx = event.screenX - drag.screenX;
+    const dy = event.screenY - drag.screenY;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true;
+    suppressPreviewClick.current = true;
+    void window.doit.moveWindow(Math.round(drag.windowX + dx), Math.round(drag.windowY + dy));
+  }
+
+  function finishPreviewDrag() { previewDrag.current = null; }
+
+  function openFromPreview(event: React.MouseEvent<HTMLButtonElement>, next: 'home' | 'add' = 'home') {
+    if (suppressPreviewClick.current) { suppressPreviewClick.current = false; event.preventDefault(); return; }
+    open(next);
+  }
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && expanded) collapse(); };
     window.addEventListener('keydown', handleKeyDown);
@@ -419,7 +438,7 @@ export function App() {
       {!expanded ? (
         <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }}>
           <AnimatePresence initial={false}>
-            {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: [0, 37, 69][index], scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onClick={() => open()} aria-label={`${task.title} · 할 일 목록 열기`}>
+            {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: [0, 37, 69][index], scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event)} aria-label={`${task.title} · 할 일 목록 열기`}>
               {index === 0 ? <Bosongi /> : null}
               <div className="preview-content">
                 {index === 0 && meeting ? <div className="preview-meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
@@ -428,7 +447,7 @@ export function App() {
               {index === 0 ? <Chevron /> : null}
             </motion.button>)}
           </AnimatePresence>
-          {!remaining.length ? <button className="preview-card current preview-empty interactive" onClick={() => open('add')}><Bosongi /><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
+          {!remaining.length ? <button type="button" className="preview-card current preview-empty interactive" onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event, 'add')}><Bosongi /><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
         </motion.div>
       ) : (
         <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 24, mass: .9 }}>
@@ -444,7 +463,7 @@ export function App() {
               <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
               {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
               {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}
-              <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="ghost" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
+              <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="secondary" className="undo-action" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
             </section>
           )}
         </motion.div>
