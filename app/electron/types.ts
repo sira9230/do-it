@@ -19,6 +19,8 @@ export interface CalendarEvent {
   title: string;
   startAt: string;
   endAt: string;
+  source?: 'notion' | 'microsoft';
+  isAllDay?: boolean;
   isCanceled: boolean;
   responseStatus: 'accepted' | 'tentative' | 'declined' | 'none';
 }
@@ -41,5 +43,7 @@ export interface AppState {
     microsoft: 'disconnected' | 'synced' | 'error';
     lastSuccessAt: string | null;
     pendingCount: number;
+    notionError?: string | null;
+    microsoftError?: string | null;
   };
 }

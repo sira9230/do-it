@@ -45,6 +45,7 @@ function meetingNotice(events: CalendarEvent[], now: Date) {
       const startedBeforeToday = start < new Date(`${localDate(now)}T00:00:00`);
       const crossesMidnight = startedBeforeToday && now >= start && now < end;
       return !event.isCanceled
+        && !event.isAllDay
         && event.responseStatus !== 'declined'
         && ((startsToday && now >= new Date(start.getTime() - 30 * 60_000) && now < end) || crossesMidnight);
     })
@@ -56,6 +57,7 @@ function meetingNotice(events: CalendarEvent[], now: Date) {
 }
 
 function formatTimeRange(event: CalendarEvent) {
+  if (event.isAllDay) return '종일';
   const formatter = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${formatter.format(new Date(event.startAt))}–${formatter.format(new Date(event.endAt))}`;
 }
@@ -67,7 +69,7 @@ function formatReminder(value: string) {
 }
 
 function Bosongi() {
-  return <div className="bosongi" aria-hidden="true"><img src="./assets/bosongi.png" alt="" /></div>;
+  return <div className="bosongi" aria-hidden="true"><img src="./assets/bosongi-face.png" alt="" /></div>;
 }
 
 function Checkbox({ task, onToggle }: { task: Task; onToggle: (id: string) => void }) {
@@ -165,6 +167,33 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
 
 function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }) {
   const update = (patch: Partial<AppState['settings']>) => void window.doit.updateSettings(patch);
+  const [notionToken, setNotionToken] = useState('');
+  const [microsoftClientId, setMicrosoftClientId] = useState('');
+  const [deviceCode, setDeviceCode] = useState('');
+  const [busy, setBusy] = useState<'notion' | 'microsoft' | 'sync' | null>(null);
+  const [error, setError] = useState('');
+  async function connectNotion() {
+    setBusy('notion'); setError('');
+    try {
+      await window.doit.connectNotion(notionToken);
+      setNotionToken('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Notion 연결에 실패했어요.'); }
+    finally { setBusy(null); }
+  }
+  async function connectMicrosoft() {
+    setBusy('microsoft'); setError('');
+    try {
+      const device = await window.doit.connectMicrosoft(microsoftClientId);
+      setDeviceCode(device.userCode);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Microsoft 연결에 실패했어요.'); }
+    finally { setBusy(null); }
+  }
+  async function refresh() {
+    setBusy('sync'); setError('');
+    try { await window.doit.refreshSync(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '동기화에 실패했어요.'); }
+    finally { setBusy(null); }
+  }
   return (
     <section className="page settings">
       <div className="heading back"><button onClick={onBack} aria-label="설정 닫기">‹</button><h2>설정</h2></div>
@@ -177,9 +206,17 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
       <button className="position-reset" onClick={() => void window.doit.resetWindowPosition()}>상단 중앙으로 위치 초기화</button>
       <p className="settings-note">위젯의 빈 공간이나 상단 헤더를 드래그해 원하는 곳으로 옮길 수 있어요.</p>
       <h3>연동 및 동기화 관리</h3>
-      {([['Notion', state.sync.notion], ['Microsoft Calendar', state.sync.microsoft]] as const).map(([name, status]) => (
-        <div className="connection" key={name}><span><strong>{name}</strong><small>{status === 'disconnected' ? '연결 안 됨' : '정상'}</small></span><button disabled>연결</button></div>
-      ))}
+      <div className="connection"><span><strong>Notion 회의록 DB</strong><small>{state.sync.notion === 'synced' ? '연결됨 · 회의 일정 표시' : state.sync.notion === 'error' ? '동기화 오류' : '연결 안 됨'}</small></span></div>
+      <p className="settings-note">지정한 회의록 DB의 Name·날짜 속성을 읽어요. Notion에서 이 DB를 통합에 공유해주세요.</p>
+      <div className="connection-form"><input type="password" value={notionToken} onChange={(event) => setNotionToken(event.target.value)} placeholder="Notion 내부 통합 토큰" aria-label="Notion 내부 통합 토큰" /><button onClick={() => void connectNotion()} disabled={busy !== null || !notionToken.trim()}>연결</button></div>
+      {state.sync.notionError ? <p className="connection-error">{state.sync.notionError}</p> : null}
+      <div className="connection"><span><strong>Microsoft Teams 캘린더</strong><small>{state.sync.microsoft === 'synced' ? '연결됨 · 계정 일정 표시' : state.sync.microsoft === 'error' ? '동기화 오류' : '연결 안 됨'}</small></span></div>
+      <p className="settings-note">Teams와 같은 Microsoft 계정의 캘린더를 읽어요. Entra 앱 등록에서 공개 클라이언트 흐름과 Calendars.Read 권한이 필요해요.</p>
+      <div className="connection-form"><input value={microsoftClientId} onChange={(event) => setMicrosoftClientId(event.target.value)} placeholder="앱 클라이언트 ID" aria-label="Microsoft 앱 클라이언트 ID" /><button onClick={() => void connectMicrosoft()} disabled={busy !== null || !microsoftClientId.trim()}>로그인</button></div>
+      {deviceCode ? <p className="device-code">열린 Microsoft 로그인 창에서 코드 <strong>{deviceCode}</strong>를 입력해주세요.</p> : null}
+      {state.sync.microsoftError ? <p className="connection-error">{state.sync.microsoftError}</p> : null}
+      {error ? <p className="connection-error" role="alert">{error}</p> : null}
+      <button className="position-reset" onClick={() => void refresh()} disabled={busy !== null}>지금 동기화</button>
       <div className="sync"><span>마지막 동기화</span><strong>{state.sync.lastSuccessAt ? new Date(state.sync.lastSuccessAt).toLocaleString('ko-KR') : '아직 없음'}</strong></div>
     </section>
   );
@@ -206,6 +243,8 @@ export function App() {
     .toSorted((a, b) => a.priority.localeCompare(b.priority) || a.createdAt.localeCompare(b.createdAt)), [state.tasks]);
   const completed = useMemo(() => state.tasks.filter((task) => task.status === 'done'), [state.tasks]);
   const meeting = state.settings.meetingNoticeEnabled ? meetingNotice(state.events, now) : null;
+  const todayEvents = state.events.filter((event) => !event.isCanceled && event.responseStatus !== 'declined'
+    && (localDate(new Date(event.startAt)) === localDate(now) || (new Date(event.startAt) < now && new Date(event.endAt) > now)));
   const representative = remaining[0] ?? null;
 
   function open(next: 'home' | 'add' | 'settings' = 'home') {
@@ -246,7 +285,7 @@ export function App() {
       ) : (
         <div className="expanded-inner">
           <header>
-            <button className="brand interactive" onClick={() => setPage('home')}><Bosongi /><span>Do it <small>Widget</small></span></button>
+            <button className="brand interactive" onClick={() => setPage('home')}><Bosongi /><span>Do it</span></button>
             <div><button className="icon interactive" aria-label="설정" onClick={() => setPage('settings')}>⚙</button><button className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></button></div>
           </header>
           {page === 'add' ? <AddTask onClose={() => setPage('home')} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
@@ -256,7 +295,7 @@ export function App() {
               <div className="list">{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} />)}</div>
               {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><button onClick={() => setPage('add')}>할 일 추가하기</button></div> : null}
               {completed.length ? <div className="completed-list"><button onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></button>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} />) : null}</div> : null}
-              <div className="timeline"><h2>오늘 타임라인</h2>{state.events.length ? state.events.map((event) => <div key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>) : <p>연결된 일정이 없어요.</p>}</div>
+              <div className="timeline"><h2>오늘 타임라인</h2>{todayEvents.length ? todayEvents.map((event) => <div key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>) : <p>오늘 일정이 없어요.</p>}</div>
             </section>
           )}
         </div>

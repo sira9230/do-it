@@ -145,6 +145,12 @@ button { cursor: pointer; }
 .connection span { display: flex; flex-direction: column; gap: 3px; }
 .connection small { color: var(--muted); font-size: 11px; }
 .connection button { padding: 7px 10px; color: var(--muted); background: var(--soft); border: 0; border-radius: 8px; }
+.connection-form { display: flex; gap: 6px; margin: 9px 0 15px; }
+.connection-form input { min-width: 0; flex: 1; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+.connection-form button { padding: 8px 11px; color: #fff; background: var(--blue); border: 0; border-radius: 8px; font-size: 12px; white-space: nowrap; }
+.connection-form button:disabled, .position-reset:disabled { cursor: default; opacity: .5; }
+.connection-error { margin: 6px 0; color: #b91c1c; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.device-code { padding: 10px; margin: 7px 0; color: #1d4ed8; background: #eff6ff; border-radius: 8px; font-size: 12px; }
 .sync { display: flex; justify-content: space-between; padding: 12px; margin-top: 12px; color: var(--muted); background: var(--soft); border-radius: 10px; font-size: 11px; }
 .sync strong { color: #191f28; font-weight: 500; }
 

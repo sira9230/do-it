@@ -18,6 +18,8 @@ export interface CalendarEvent {
   title: string;
   startAt: string;
   endAt: string;
+  source?: 'notion' | 'microsoft';
+  isAllDay?: boolean;
   isCanceled: boolean;
   responseStatus: 'accepted' | 'tentative' | 'declined' | 'none';
 }
@@ -40,6 +42,8 @@ export interface AppState {
     microsoft: 'disconnected' | 'synced' | 'error';
     lastSuccessAt: string | null;
     pendingCount: number;
+    notionError?: string | null;
+    microsoftError?: string | null;
   };
 }
 
@@ -56,6 +60,9 @@ export interface DoitAPI {
   updateSettings(patch: Partial<Settings>): Promise<Settings>;
   setExpanded(expanded: boolean): Promise<void>;
   resetWindowPosition(): Promise<void>;
+  connectNotion(token: string): Promise<number>;
+  connectMicrosoft(clientId: string): Promise<{ userCode: string; verificationUri: string }>;
+  refreshSync(): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
 }
 

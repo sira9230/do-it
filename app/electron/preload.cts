@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('doit', {
   updateSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:update', patch),
   setExpanded: (expanded: boolean): Promise<void> => ipcRenderer.invoke('window:expand', expanded),
   resetWindowPosition: (): Promise<void> => ipcRenderer.invoke('window:reset-position'),
+  connectNotion: (token: string): Promise<number> => ipcRenderer.invoke('notion:connect', token),
+  connectMicrosoft: (clientId: string): Promise<{ userCode: string; verificationUri: string }> => ipcRenderer.invoke('microsoft:connect', clientId),
+  refreshSync: (): Promise<AppState> => ipcRenderer.invoke('sync:refresh'),
   onStateChanged: (callback: (state: AppState) => void) => {
     const handler = (_event: unknown, state: AppState) => callback(state);
     ipcRenderer.on('state:changed', handler);

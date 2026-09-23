@@ -1,4 +1,4 @@
-# Do it(두잇) Widget
+# Do it
 
 macOS용 상시 노출 할 일·일정 위젯의 첫 실행 가능한 MVP입니다.
 
@@ -15,7 +15,7 @@ npm run dev
 npm run package:mac
 ```
 
-생성 결과는 `release/Do it Widget-0.1.0.dmg`와 `release/mac/Do it Widget.app`입니다. 현재 빌드는 Apple 개발자 서명·공증 전의 로컬 테스트용 unsigned 앱입니다.
+생성 결과는 `release/Do it-0.1.0.dmg`와 `release/mac/Do it.app`입니다. 현재 빌드는 Apple 개발자 서명·공증 전의 로컬 테스트용 unsigned 앱입니다.
 
 ## 현재 범위
 
@@ -27,5 +27,11 @@ npm run package:mac
 - 할 일별 macOS 푸시 리마인드
 - 항상 위, 자동 실행, 내용 숨김 설정
 - 로컬 영구 저장
+- 지정된 Notion 회의록 DB의 회의 일정 읽기
+- Microsoft 계정 캘린더 읽기 및 5분 간격 갱신
 
-Notion 및 Microsoft 인증·동기화는 다음 단계이며 설정 버튼은 현재 비활성화되어 있습니다.
+설정에서 Notion 내부 통합 토큰을 입력하고 해당 회의록 DB를 통합에 공유하면 Name·날짜 속성의 일정이 표시됩니다. 보내주신 DB에는 할 일 완료·중요도 속성이 없어 이 DB와 할 일의 양방향 동기화는 제공하지 않습니다.
+
+Teams와 같은 계정의 Microsoft 일정은 Microsoft Entra에 등록한 공개 클라이언트 앱의 클라이언트 ID로 로그인합니다. 앱 등록에는 `Calendars.Read` 위임 권한과 공개 클라이언트 흐름이 필요합니다. 설정에서 ID를 입력하면 브라우저가 열리고, 앱에 표시되는 코드를 입력해 로그인할 수 있습니다. 앱은 Teams 로컬 세션의 인증 정보를 읽지 않습니다.
+
+연동 인증 정보는 Electron의 macOS 보안 저장소로 암호화해 사용자 데이터 디렉터리에 저장합니다.

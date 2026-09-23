@@ -23,10 +23,14 @@ const defaults: AppState = {
 };
 
 const target = () => path.join(app.getPath('userData'), 'doit-state.json');
+const previousTarget = () => path.join(app.getPath('appData'), 'Do it Widget', 'doit-state.json');
 
 export async function load(): Promise<AppState> {
   try {
-    const raw = JSON.parse(await readFile(target(), 'utf8')) as Partial<AppState>;
+    let content: string;
+    try { content = await readFile(target(), 'utf8'); }
+    catch { content = await readFile(previousTarget(), 'utf8'); }
+    const raw = JSON.parse(content) as Partial<AppState>;
     return {
       ...defaults,
       ...raw,

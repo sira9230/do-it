@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "A calm always-on-top task and meeting widget for macOS.",
-  "author": "Do it Widget",
+  "author": "Do it",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -31,7 +31,7 @@
   },
   "build": {
     "appId": "com.doit.widget",
-    "productName": "Do it Widget",
+    "productName": "Do it",
     "directories": { "output": "release" },
     "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
     "mac": {
@@ -39,6 +39,6 @@
       "target": ["dmg"],
       "icon": "build/icon.png"
     },
-    "dmg": { "title": "Do it Widget" }
+    "dmg": { "title": "Do it" }
   }
 }

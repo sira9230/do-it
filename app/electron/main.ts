@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTask, load, save } from './store.js';
-import type { AppState, Priority, Settings, Task } from './types.js';
+import { fetchMicrosoftEvents, fetchNotionEvents, readCredentials, refreshMicrosoftToken, startMicrosoftSignIn, waitForMicrosoftSignIn, writeCredentials } from './integrations.js';
+import type { AppState, CalendarEvent, Priority, Settings, Task } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WINDOW_WIDTH = 360;
@@ -15,6 +16,7 @@ let tray: Tray | null = null;
 let state: AppState;
 let quitting = false;
 let positionSaveTimer: NodeJS.Timeout | null = null;
+let syncTimer: NodeJS.Timeout | null = null;
 const reminderTimers = new Map<string, NodeJS.Timeout>();
 
 function centeredPosition() {
@@ -61,7 +63,7 @@ function scheduleReminder(task: Task) {
     }
     if (!Notification.isSupported()) return;
     const notification = new Notification({
-      title: 'Do it Widget · 할 일 리마인드',
+      title: 'Do it · 할 일 리마인드',
       body: state.settings.privacyMode ? '설정한 할 일을 확인할 시간이에요.' : task.title,
       silent: false,
     });
@@ -128,7 +130,7 @@ async function createWindow() {
 function createTray() {
   tray = new Tray(nativeImage.createEmpty());
   tray.setTitle('✓');
-  tray.setToolTip('Do it Widget');
+  tray.setToolTip('Do it');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '두잇 위젯 보기', click: () => widgetWindow?.showInactive() },
     { label: '상단 중앙으로 이동', click: () => resetWindowPosition() },
@@ -144,6 +146,79 @@ function resetWindowPosition() {
   widgetWindow?.setPosition(next.x, next.y, true);
   void persist();
 }
+
+function replaceEvents(source: 'notion' | 'microsoft', events: CalendarEvent[]) {
+  state.events = [...state.events.filter((event) => event.source !== source), ...events]
+    .sort((a, b) => a.startAt.localeCompare(b.startAt));
+}
+
+async function refreshNotion() {
+  const { notionToken } = await readCredentials();
+  if (!notionToken) return;
+  try {
+    replaceEvents('notion', await fetchNotionEvents(notionToken));
+    state.sync.notion = 'synced';
+    state.sync.notionError = null;
+    state.sync.lastSuccessAt = new Date().toISOString();
+  } catch (error) {
+    state.sync.notion = 'error';
+    state.sync.notionError = error instanceof Error ? error.message : 'Notion 동기화에 실패했습니다.';
+  }
+  await persist();
+}
+
+async function refreshMicrosoft() {
+  const { microsoftClientId, microsoftRefreshToken } = await readCredentials();
+  if (!microsoftClientId || !microsoftRefreshToken) return;
+  try {
+    const token = await refreshMicrosoftToken(microsoftClientId, microsoftRefreshToken);
+    if (!token.access_token) throw new Error('Microsoft 인증 정보를 갱신하지 못했습니다.');
+    if (token.refresh_token) await writeCredentials({ microsoftRefreshToken: token.refresh_token });
+    replaceEvents('microsoft', await fetchMicrosoftEvents(token.access_token));
+    state.sync.microsoft = 'synced';
+    state.sync.microsoftError = null;
+    state.sync.lastSuccessAt = new Date().toISOString();
+  } catch (error) {
+    state.sync.microsoft = 'error';
+    state.sync.microsoftError = error instanceof Error ? error.message : 'Microsoft 일정 동기화에 실패했습니다.';
+  }
+  await persist();
+}
+
+ipcMain.handle('notion:connect', async (_event, token: string) => {
+  if (!token.trim()) throw new Error('Notion 통합 토큰을 입력해주세요.');
+  const events = await fetchNotionEvents(token.trim());
+  await writeCredentials({ notionToken: token.trim() });
+  replaceEvents('notion', events);
+  state.sync.notion = 'synced';
+  state.sync.notionError = null;
+  state.sync.lastSuccessAt = new Date().toISOString();
+  await persist();
+  return events.length;
+});
+ipcMain.handle('microsoft:connect', async (_event, clientId: string) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(clientId.trim())) throw new Error('Microsoft 앱 클라이언트 ID를 확인해주세요.');
+  const device = await startMicrosoftSignIn(clientId.trim());
+  void shell.openExternal(device.verification_uri);
+  void waitForMicrosoftSignIn(clientId.trim(), device).then(async (token) => {
+    if (!token.access_token || !token.refresh_token) throw new Error('Microsoft 인증 정보가 누락됐습니다.');
+    await writeCredentials({ microsoftClientId: clientId.trim(), microsoftRefreshToken: token.refresh_token });
+    replaceEvents('microsoft', await fetchMicrosoftEvents(token.access_token));
+    state.sync.microsoft = 'synced';
+    state.sync.microsoftError = null;
+    state.sync.lastSuccessAt = new Date().toISOString();
+    await persist();
+  }).catch(async (error) => {
+    state.sync.microsoft = 'error';
+    state.sync.microsoftError = error instanceof Error ? error.message : 'Microsoft 로그인에 실패했습니다.';
+    await persist();
+  });
+  return { userCode: device.user_code, verificationUri: device.verification_uri };
+});
+ipcMain.handle('sync:refresh', async () => {
+  await Promise.allSettled([refreshNotion(), refreshMicrosoft()]);
+  return state;
+});
 
 ipcMain.handle('state:get', () => state);
 ipcMain.handle('task:create', async (_event, input: {
@@ -192,12 +267,14 @@ ipcMain.handle('window:expand', (_event, expanded: boolean) => {
 });
 ipcMain.handle('window:reset-position', () => resetWindowPosition());
 
-app.setName('Do it Widget');
+app.setName('Do it');
 app.whenReady().then(async () => {
   state = await load();
   await createWindow();
   createTray();
   rescheduleAllReminders();
+  void Promise.allSettled([refreshNotion(), refreshMicrosoft()]);
+  syncTimer = setInterval(() => { void Promise.allSettled([refreshNotion(), refreshMicrosoft()]); }, 5 * 60_000);
   screen.on('display-removed', () => {
     if (!widgetWindow) return;
     const { x, y } = widgetWindow.getBounds();
@@ -205,6 +282,6 @@ app.whenReady().then(async () => {
     widgetWindow.setPosition(next.x, next.y);
   });
 });
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { quitting = true; if (syncTimer) clearInterval(syncTimer); });
 app.on('activate', () => widgetWindow?.showInactive());
 app.on('window-all-closed', () => {});
