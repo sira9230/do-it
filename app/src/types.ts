@@ -61,6 +61,7 @@ export interface DoitAPI {
     reminderAt: string | null;
     notionPageId?: string | null;
   }): Promise<Task>;
+  updateTask(input: { id: string; title: string; summary: string }): Promise<Task>;
   toggleTask(id: string): Promise<Task>;
   setTaskPriority(id: string, priority: Priority): Promise<Task>;
   updateSettings(patch: Partial<Settings>): Promise<Settings>;

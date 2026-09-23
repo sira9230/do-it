@@ -140,6 +140,8 @@ button { cursor: pointer; }
 .task-row > div { min-width: 0; flex: 1; }
 .title-line { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .title-line strong { min-width: 0; flex: 1; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.edit-task { width: 24px; height: 24px; flex: 0 0 auto; padding: 0; color: var(--muted-foreground); }
+.edit-task:hover { color: var(--foreground); }
 .task-row p { display: -webkit-box; overflow: hidden; margin: 5px 0 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .task-source { display: flex; align-items: center; gap: 8px; margin-top: 5px; color: var(--muted-foreground); font-size: 11px; }
 .task-source span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .76; }
@@ -173,6 +175,11 @@ button { cursor: pointer; }
 .destination-options button { max-width: 100%; height: 34px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .destination-options button.selected { border-color: var(--primary); color: var(--primary); background: var(--accent); }
 .destination-help { margin: 7px 0 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.edit-context { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--muted); }
+.edit-context strong { color: var(--muted-foreground); font-size: 12px; font-weight: 600; }
+.edit-context p { margin: 7px 0; color: var(--foreground); font-size: 14px; line-height: 1.5; }
+.edit-context small { color: var(--muted-foreground); font-size: 11px; }
+.edit-notion-link { align-self: flex-start; height: auto; padding: 0; font-size: 12px; }
 .optional { margin-left: 4px; color: var(--muted-foreground); font-weight: 400; }
 .form-help { margin: -10px 0 0; color: var(--muted-foreground); font-size: 11px; }
 .error { color: var(--destructive); font-size: 12px; }

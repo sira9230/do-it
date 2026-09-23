@@ -2,6 +2,8 @@ import { app, safeStorage } from 'electron';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CalendarEvent, Priority, Task } from './types.js';
+import { inlinePriority, isPriorityCode, replaceVisibleTitle, visibleText, writableRichText } from './notion-rich-text.js';
+import type { NotionRichText } from './notion-rich-text.js';
 
 const NOTION_DATA_SOURCE = '159563d4-3059-8187-9a21-000b9c31881e';
 const NOTION_VERSION = '2025-09-03';
@@ -64,19 +66,7 @@ interface NotionBlock {
   heading_3?: { rich_text: NotionRichText[] };
 }
 
-interface NotionRichText {
-  type?: string;
-  plain_text?: string;
-  text?: { content: string; link?: { url: string } | null };
-  annotations?: { code?: boolean; [key: string]: unknown };
-  [key: string]: unknown;
-}
-
 interface ContextualBlock { block: NotionBlock; description: string }
-
-function isPriorityCode(part: NotionRichText) {
-  return part.annotations?.code === true && !!part.text && /^P[123]$/i.test((part.plain_text ?? part.text.content).trim());
-}
 
 function blockRichText(block: NotionBlock): NotionRichText[] {
   return block.to_do?.rich_text ?? block.paragraph?.rich_text ?? block.bulleted_list_item?.rich_text
@@ -85,13 +75,12 @@ function blockRichText(block: NotionBlock): NotionRichText[] {
 }
 
 function blockText(block: NotionBlock) {
-  return blockRichText(block).filter((part) => !isPriorityCode(part))
-    .map((part) => part.plain_text ?? part.text?.content ?? '').join('').replace(/\s{2,}/g, ' ').trim();
+  return visibleText(blockRichText(block));
 }
 
 function blockPriority(block: NotionBlock): Priority {
-  const code = block.to_do?.rich_text.find(isPriorityCode);
-  if (code) return (code.plain_text ?? code.text?.content ?? '').trim().toUpperCase() as Priority;
+  const code = inlinePriority(block.to_do?.rich_text ?? []);
+  if (code) return code;
   return notionPriority(block.to_do?.color);
 }
 
@@ -266,7 +255,7 @@ export async function updateNotionTodoPriority(token: string, blockId: string, p
   const current = await responseJson<NotionBlock>(`https://api.notion.com/v1/blocks/${blockId}`, { headers: notionHeaders(token) });
   if (current.type !== 'to_do' || !current.to_do) throw new Error('Notion 체크박스를 찾을 수 없습니다.');
   const richText = current.to_do.rich_text.map((part) => {
-    const { plain_text: _plainText, href: _href, ...writable } = part;
+    const writable = writableRichText(part);
     if (isPriorityCode(part) && writable.text) return { ...writable, text: { ...writable.text, content: writable.text.content.replace(/P[123]/i, priority) } };
     return writable;
   });
@@ -278,6 +267,17 @@ export async function updateNotionTodoPriority(token: string, blockId: string, p
     method: 'PATCH',
     headers: notionHeaders(token),
     body: JSON.stringify({ to_do: { color, rich_text: richText } }),
+  });
+}
+
+export async function updateNotionTodoTitle(token: string, blockId: string, title: string) {
+  const current = await responseJson<NotionBlock>(`https://api.notion.com/v1/blocks/${blockId}`, { headers: notionHeaders(token) });
+  if (current.type !== 'to_do' || !current.to_do) throw new Error('Notion 체크박스를 찾을 수 없습니다.');
+  if (blockText(current) === title) return;
+  await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
+    method: 'PATCH',
+    headers: notionHeaders(token),
+    body: JSON.stringify({ to_do: { rich_text: replaceVisibleTitle(current.to_do.rich_text, title) } }),
   });
 }
 

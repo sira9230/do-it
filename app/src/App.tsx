@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronDown, ChevronUp, Clock3, ExternalLink, Plus, Settings2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Clock3, ExternalLink, Pencil, Plus, Settings2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox';
@@ -116,7 +116,7 @@ function PrioritySelector({ task, onChange }: { task: Task; onChange: (id: strin
   );
 }
 
-function TaskRow({ task, onToggle, onPriority }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void }) {
+function TaskRow({ task, onToggle, onPriority, onEdit }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void }) {
   return (
     <div className={`task-row ${task.status === 'done' ? 'completed' : ''}`}>
       <TaskCheckbox task={task} onToggle={onToggle} />
@@ -124,6 +124,7 @@ function TaskRow({ task, onToggle, onPriority }: { task: Task; onToggle: (id: st
         <div className="title-line">
           <strong>{task.title}</strong>
           <PrioritySelector task={task} onChange={onPriority} />
+          <Button variant="ghost" size="icon-xs" className="edit-task" aria-label={`${task.title} 수정`} onClick={() => onEdit(task.id)}><Pencil className="size-3.5" /></Button>
         </div>
         {task.summary ? <p>{task.summary}</p> : null}
         {task.notionPageId ? <div className="task-source">
@@ -138,6 +139,37 @@ function TaskRow({ task, onToggle, onPriority }: { task: Task; onToggle: (id: st
       </div>
     </div>
   );
+}
+
+function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
+  const [title, setTitle] = useState(task.title);
+  const [summary, setSummary] = useState(task.summary);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (saving) return;
+    if (!title.trim()) { setError('할 일을 입력해주세요.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await window.doit.updateTask({ id: task.id, title, summary });
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '수정하지 못했어요.');
+    } finally { setSaving(false); }
+  }
+
+  return <form className="page add" onSubmit={submit}>
+    <div className="heading"><h2>할 일 수정</h2><Button type="button" variant="ghost" className="text" onClick={onClose}>취소</Button></div>
+    <Label>할 일<Input autoFocus maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} /></Label>
+    {task.notionBlockId ? <div className="edit-context"><strong>설명 · 상위 항목</strong><p>{task.summary || '상위 항목이 없어요.'}</p><small>상위 항목은 Notion 회의록에서 변경할 수 있어요.</small></div>
+      : <Label>짧은 설명<Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>}
+    {task.notionPageId ? <Button type="button" variant="link" className="edit-notion-link" onClick={() => void window.doit.openNotionPage(task.notionPageId!)}>Notion에서 열기 <ExternalLink className="size-3.5" /></Button> : null}
+    {error ? <p className="error" role="alert">{error}</p> : null}
+    <Button type="submit" className="primary" disabled={saving}>{saving ? '저장 중…' : '변경 사항 저장'}</Button>
+  </form>;
 }
 
 function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: CalendarEvent[] }) {
@@ -269,7 +301,8 @@ export function App() {
   const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [page, setPage] = useState<'home' | 'add' | 'settings'>('home');
+  const [page, setPage] = useState<'home' | 'add' | 'edit' | 'settings'>('home');
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [now, setNow] = useState(new Date());
 
@@ -290,6 +323,7 @@ export function App() {
     && !(event.id.startsWith('notion:') && event.isAllDay)
     && (localDate(new Date(event.startAt)) === localDate(now) || (new Date(event.startAt) < now && new Date(event.endAt) > now)));
   const representative = remaining[0] ?? null;
+  const editingTask = state.tasks.find((task) => task.id === editingTaskId) ?? null;
 
   function open(next: 'home' | 'add' | 'settings' = 'home') {
     setPage(next);
@@ -311,6 +345,7 @@ export function App() {
 
   const toggle = (id: string) => void window.doit.toggleTask(id);
   const changePriority = (id: string, priority: Priority) => void window.doit.setTaskPriority(id, priority);
+  const editTask = (id: string) => { setEditingTaskId(id); setPage('edit'); };
   if (!loaded) return <main className="shell loading"><Bosongi /><span>두잇 준비 중…</span></main>;
 
   return (
@@ -333,14 +368,14 @@ export function App() {
             <Button variant="ghost" className="brand interactive" onClick={() => setPage('home')}><Bosongi /><span>Do it</span></Button>
             <div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => setPage('settings')}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
           </header>
-          {page === 'add' ? <AddTask onClose={() => setPage('home')} notionPages={todayNotionPages} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
+          {page === 'add' ? <AddTask onClose={() => setPage('home')} notionPages={todayNotionPages} /> : page === 'edit' && editingTask ? <EditTask key={editingTask.id} task={editingTask} onClose={() => setPage('home')} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
             <section className="page home">
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
               <div className="heading"><div><span className="eyebrow">TODAY</span><h1>남은 할 일 {remaining.length}개</h1></div><Button variant="ghost" className="text" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
-              <div className="list">{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} />)}</div>
+              <div className="list">{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} />)}</div>
               {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
-              {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} />) : null}</div> : null}
+              {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} />) : null}</div> : null}
             </section>
           )}
         </div>

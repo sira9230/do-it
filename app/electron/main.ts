@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, s
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTask, load, save } from './store.js';
-import { appendNotionTodo, fetchMicrosoftEvents, fetchNotionData, readCredentials, refreshMicrosoftToken, startMicrosoftSignIn, updateNotionTodo, updateNotionTodoPriority, waitForMicrosoftSignIn, writeCredentials } from './integrations.js';
+import { appendNotionTodo, fetchMicrosoftEvents, fetchNotionData, readCredentials, refreshMicrosoftToken, startMicrosoftSignIn, updateNotionTodo, updateNotionTodoPriority, updateNotionTodoTitle, waitForMicrosoftSignIn, writeCredentials } from './integrations.js';
 import type { AppState, CalendarEvent, Priority, Settings, Task } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -270,6 +270,27 @@ ipcMain.handle('task:create', async (_event, input: {
   scheduleReminder(next);
   await persist();
   return next;
+});
+ipcMain.handle('task:update', async (_event, input: { id: string; title: string; summary: string }) => {
+  const item = state.tasks.find((candidate) => candidate.id === input.id);
+  if (!item) throw new Error('수정할 할 일을 찾을 수 없습니다.');
+  const title = input.title.trim();
+  const summary = input.summary.trim();
+  if (!title || title.length > 200) throw new Error('할 일은 1~200자로 입력해주세요.');
+  if (summary.length > 500) throw new Error('설명은 500자 이하로 입력해주세요.');
+  let notionTitleChanged = false;
+  if (item.notionBlockId && item.title !== title) {
+    const { notionToken } = await readCredentials();
+    if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
+    await updateNotionTodoTitle(notionToken, item.notionBlockId, title);
+    notionTitleChanged = true;
+  }
+  item.title = title;
+  if (!item.notionBlockId) item.summary = summary;
+  item.updatedAt = new Date().toISOString();
+  await persist();
+  if (notionTitleChanged) void refreshNotion();
+  return item;
 });
 ipcMain.handle('task:toggle', async (_event, id: string) => {
   const item = state.tasks.find((candidate) => candidate.id === id);
