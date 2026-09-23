@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion, MotionConfig, type PanInfo } from 'motion/react';
 import { ArrowLeft, ChevronDown, ChevronUp, Clock3, ExternalLink, Pencil, Plus, Settings2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -88,7 +89,7 @@ function Bosongi() {
 function TaskCheckbox({ task, onToggle }: { task: Task; onToggle: (id: string) => void }) {
   return (
     <UiCheckbox
-      className="interactive size-5"
+      className="interactive size-[18px]"
       checked={task.status === 'done'}
       aria-label={`${task.title} ${task.status === 'done' ? '완료 취소' : '완료'}`}
       onCheckedChange={() => onToggle(task.id)}
@@ -119,9 +120,15 @@ function PrioritySelector({ task, onChange }: { task: Task; onChange: (id: strin
   );
 }
 
-function TaskRow({ task, onToggle, onPriority, onEdit }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void }) {
+function TaskRow({ task, onToggle, onPriority, onEdit, onDelete }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void }) {
+  const [draggingAway, setDraggingAway] = useState(false);
+  function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
+    const droppedOutside = info.point.x < 0 || info.point.x > window.innerWidth;
+    if (onDelete && droppedOutside && Math.abs(info.offset.x) > 72) onDelete(task.id);
+    setDraggingAway(false);
+  }
   return (
-    <div className={`task-row ${task.status === 'done' ? 'completed' : ''}`}>
+    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 390, damping: 34 }} drag={onDelete ? 'x' : false} dragSnapToOrigin dragMomentum={false} onDrag={(_event, info) => setDraggingAway(info.point.x < 0 || info.point.x > window.innerWidth)} onDragEnd={finishDrag} whileDrag={{ scale: 1.035, rotate: 1.5, zIndex: 10 }} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${draggingAway ? 'dragging-away' : ''}`}>
       <TaskCheckbox task={task} onToggle={onToggle} />
       <div>
         <div className="title-line">
@@ -140,7 +147,7 @@ function TaskRow({ task, onToggle, onPriority, onEdit }: { task: Task; onToggle:
           ? <span className="reminder-badge"><Clock3 className="size-3" /> {formatReminder(task.reminderAt)} 리마인드</span>
           : null}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -304,6 +311,8 @@ export function App() {
   const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [undoTask, setUndoTask] = useState<Task | null>(null);
   const [page, setPage] = useState<'home' | 'add' | 'edit' | 'settings'>('home');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -317,16 +326,48 @@ export function App() {
   }, []);
 
   const remaining = useMemo(() => state.tasks
-    .filter((task) => task.status !== 'done' && task.plannedDate === localDate())
-    .toSorted((a, b) => a.priority.localeCompare(b.priority) || a.createdAt.localeCompare(b.createdAt)), [state.tasks]);
-  const completed = useMemo(() => state.tasks.filter((task) => task.status === 'done'), [state.tasks]);
+    .filter((task) => task.status !== 'done' && task.plannedDate === localDate() && !deletingIds.includes(task.id))
+    .toSorted((a, b) => a.priority.localeCompare(b.priority) || a.createdAt.localeCompare(b.createdAt)), [state.tasks, deletingIds]);
+  const completed = useMemo(() => state.tasks.filter((task) => task.status === 'done' && !deletingIds.includes(task.id)), [state.tasks, deletingIds]);
   const meeting = state.settings.meetingNoticeEnabled ? meetingNotice(state.events, now) : null;
   const todayNotionPages = state.events.filter((event) => event.id.startsWith('notion:') && localDate(new Date(event.startAt)) === localDate(now));
   const todayEvents = state.events.filter((event) => !event.isCanceled && event.responseStatus !== 'declined'
     && !(event.id.startsWith('notion:') && event.isAllDay)
     && (localDate(new Date(event.startAt)) === localDate(now) || (new Date(event.startAt) < now && new Date(event.endAt) > now)));
-  const representative = remaining[0] ?? null;
   const editingTask = state.tasks.find((task) => task.id === editingTaskId) ?? null;
+
+  useEffect(() => {
+    void window.doit.showHoverCount(hovered && !expanded ? remaining.length : null);
+    return () => { void window.doit.showHoverCount(null); };
+  }, [hovered, expanded, remaining.length]);
+
+  useEffect(() => {
+    if (!undoTask) return;
+    const timer = window.setTimeout(() => setUndoTask(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [undoTask]);
+
+  async function deleteTask(id: string) {
+    const task = state.tasks.find((candidate) => candidate.id === id);
+    if (!task) return;
+    setDeletingIds((ids) => [...ids, id]);
+    try {
+      await window.doit.deleteTask(id);
+      setUndoTask(task);
+    } catch (cause) {
+      window.alert(cause instanceof Error ? cause.message : '할 일을 삭제하지 못했어요.');
+    } finally {
+      setDeletingIds((ids) => ids.filter((candidate) => candidate !== id));
+    }
+  }
+
+  async function restoreTask() {
+    if (!undoTask) return;
+    const task = undoTask;
+    setUndoTask(null);
+    try { await window.doit.restoreTask(task); }
+    catch (cause) { setUndoTask(task); window.alert(cause instanceof Error ? cause.message : '할 일을 되돌리지 못했어요.'); }
+  }
 
   function open(next: 'home' | 'add' | 'settings' = 'home') {
     setPage(next);
@@ -351,17 +392,19 @@ export function App() {
   const editTask = (id: string) => { setEditingTaskId(id); setPage('edit'); };
   if (!loaded) return <main className="shell loading"><Bosongi /><span>두잇 준비 중…</span></main>;
 
-  return (
+  return <MotionConfig reducedMotion="user">
     <main className={`shell ${expanded ? 'expanded' : 'collapsed'}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       {!expanded ? (
         <div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요">
           <Button variant="ghost" className="open-character interactive" aria-label="할 일 펼치기" onClick={() => open()}><Bosongi /></Button>
-          <div className="collapsed-copy">
-            {meeting ? <div className="meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
-            {representative ? (
-              <div className="hero"><Badge variant="secondary" className={`priority ${representative.priority.toLowerCase()}`}>{priorityMeta[representative.priority].label}</Badge><strong>{state.settings.privacyMode ? '할 일' : representative.title}</strong></div>
-            ) : <Button variant="ghost" className="empty interactive" onClick={() => open('add')}>오늘 할 일을 추가해볼까요?</Button>}
-            <div className={`count ${hovered ? 'visible' : ''}`}>오늘 남은 할 일 <span className="task-count">{remaining.length}개</span></div>
+          <div className="preview-stack interactive" onClick={() => open()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') open(); }} aria-label="할 일 목록 열기">
+            <AnimatePresence initial={false}>
+              {remaining.slice(0, 2).map((task, index) => <motion.div key={task.id} className={`preview-card ${index === 0 ? 'current' : 'next'}`} initial={{ y: 72, scale: .91, opacity: 0, filter: 'blur(2px)' }} animate={{ y: index === 0 ? 0 : 48, scale: index === 0 ? 1 : .93, opacity: index === 0 ? 1 : .52, filter: index === 0 ? 'blur(0px)' : 'blur(.7px)' }} exit={{ y: -54, scale: .94, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 340, damping: 32 }} style={{ zIndex: index === 0 ? 2 : 1 }}>
+                {index === 0 && meeting ? <div className="preview-meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
+                <div className="preview-task"><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{state.settings.privacyMode ? '할 일' : task.title}</strong></div>
+              </motion.div>)}
+            </AnimatePresence>
+            {!remaining.length ? <span className="preview-empty">오늘 할 일을 추가해볼까요?</span> : null}
           </div>
           <Button variant="ghost" size="icon" className="icon interactive" aria-label="전체 할 일 보기" onClick={() => open()}><Chevron /></Button>
         </div>
@@ -376,13 +419,14 @@ export function App() {
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
               <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="text" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
-              <div className="list">{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} />)}</div>
+              <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />)}</AnimatePresence></div>
               {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
-              {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} />) : null}</div> : null}
+              {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}
+              <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="ghost" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
             </section>
           )}
         </div>
       )}
     </main>
-  );
+  </MotionConfig>;
 }

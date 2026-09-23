@@ -64,6 +64,9 @@ export interface DoitAPI {
   updateTask(input: { id: string; title: string; summary: string }): Promise<Task>;
   toggleTask(id: string): Promise<Task>;
   setTaskPriority(id: string, priority: Priority): Promise<Task>;
+  deleteTask(id: string): Promise<void>;
+  restoreTask(task: Task): Promise<void>;
+  showHoverCount(count: number | null): Promise<void>;
   updateSettings(patch: Partial<Settings>): Promise<Settings>;
   setExpanded(expanded: boolean): Promise<void>;
   resetWindowPosition(): Promise<void>;

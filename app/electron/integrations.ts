@@ -250,6 +250,18 @@ export async function updateNotionTodo(token: string, blockId: string, checked: 
   });
 }
 
+export async function deleteNotionTodo(token: string, blockId: string) {
+  await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
+    method: 'DELETE', headers: notionHeaders(token),
+  });
+}
+
+export async function restoreNotionTodo(token: string, blockId: string) {
+  await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
+    method: 'PATCH', headers: notionHeaders(token), body: JSON.stringify({ in_trash: false }),
+  });
+}
+
 export async function updateNotionTodoPriority(token: string, blockId: string, priority: Priority) {
   const color = priority === 'P1' ? 'red_background' : priority === 'P3' ? 'gray_background' : 'blue_background';
   const current = await responseJson<NotionBlock>(`https://api.notion.com/v1/blocks/${blockId}`, { headers: notionHeaders(token) });

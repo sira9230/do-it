@@ -85,6 +85,7 @@ button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 
 .shell {
+  position: relative;
   width: calc(100% - 8px);
   height: calc(100% - 8px);
   margin: 4px;
@@ -92,17 +93,24 @@ button { cursor: pointer; }
   color: var(--foreground);
   background: var(--background);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow: 0 16px 80px oklch(0 0 0 / 0.022);
+  border-radius: 28px;
+  box-shadow: 0 22px 100px oklch(0 0 0 / 0.014);
 }
 .loading { display: flex; align-items: center; gap: 10px; padding: 12px 16px; color: var(--muted-foreground); font-size: 13px; }
-.collapsed-inner { min-height: 66px; display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; -webkit-app-region: drag; }
+.collapsed-inner { height: 120px; display: flex; align-items: center; gap: 7px; padding: 12px 9px 12px 10px; -webkit-app-region: drag; }
 .interactive, .priority-trigger { -webkit-app-region: no-drag; }
 .open-character, .brand { height: auto; padding: 0; border: 0; background: transparent; }
-.open-character { width: 40px; min-width: 40px; }
-.bosongi { width: 40px; height: 40px; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; }
+.open-character { width: 34px; min-width: 34px; }
+.bosongi { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; }
 .bosongi img { width: 100%; height: 100%; object-fit: contain; }
-.collapsed-copy { min-width: 0; flex: 1; }
+.preview-stack { position: relative; align-self: stretch; min-width: 0; flex: 1; cursor: pointer; -webkit-app-region: no-drag; }
+.preview-card { position: absolute; top: 8px; left: 0; width: 100%; min-height: 54px; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 10px 12px; overflow: hidden; border: 1px solid var(--border); border-radius: 21px; background: var(--card); box-shadow: 0 10px 44px oklch(0 0 0 / .017); transform-origin: center top; }
+.preview-card.next { pointer-events: none; }
+.preview-task, .preview-meeting { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.preview-task strong, .preview-meeting strong { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.preview-meeting span { flex: 0 0 auto; color: var(--primary); font-size: 10px; }
+.preview-meeting strong { font-size: 11px; }
+.preview-empty { position: absolute; top: 27px; color: var(--muted-foreground); font-size: 13px; }
 .hero, .meeting { min-width: 0; height: 22px; display: flex; align-items: center; gap: 7px; }
 .hero > strong, .meeting > strong { min-width: 0; flex: 1; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .meeting span { color: var(--primary); font-size: 11px; white-space: nowrap; }
@@ -136,14 +144,16 @@ button { cursor: pointer; }
 .meeting-card strong { overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 
 .list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.task-row { min-height: 54px; display: flex; align-items: flex-start; gap: 10px; padding: 13px 12px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--card); transition: background-color 150ms ease, border-color 150ms ease; }
+.task-row { min-height: 54px; display: flex; align-items: flex-start; gap: 10px; padding: 13px 12px; border: 1px solid var(--border); border-radius: 19px; background: var(--card); transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease; cursor: grab; touch-action: pan-y; }
 .task-row:hover { background: var(--muted); border-color: color-mix(in oklch, var(--border) 72%, var(--muted)); }
+.task-row:active { cursor: grabbing; }
+.task-row.dragging-away { border-color: color-mix(in oklch, var(--destructive) 38%, var(--border)); background: color-mix(in oklch, var(--destructive) 7%, white); box-shadow: 0 18px 55px oklch(0 0 0 / .07); }
 .task-row > div { min-width: 0; flex: 1; }
 .title-line { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .title-line strong { min-width: 0; flex: 1; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .edit-task { width: 24px; height: 24px; flex: 0 0 auto; padding: 0; color: var(--muted-foreground); }
 .edit-task:hover { color: var(--foreground); }
-.task-row p { display: -webkit-box; overflow: hidden; margin: 5px 0 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.task-row p { display: -webkit-box; overflow: hidden; margin: 5px 0 0; color: var(--muted-foreground); font-size: 13px; font-weight: 350; line-height: 1.5; overflow-wrap: anywhere; word-break: keep-all; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .task-source { display: flex; align-items: center; gap: 8px; margin-top: 5px; color: var(--muted-foreground); font-size: 11px; }
 .task-source span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-link { height: auto; flex: 0 0 auto; gap: 3px; padding: 0; color: var(--muted-foreground); font-size: 11px; font-weight: 650; text-decoration: none; }
@@ -160,13 +170,15 @@ button { cursor: pointer; }
 .timeline h2 { margin-bottom: 10px; }
 .timeline p { margin: 0; color: var(--muted-foreground); font-size: 13px; }
 .timeline-cards { display: flex; gap: 9px; overflow-x: auto; padding: 1px 1px 9px; scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-.timeline-card { width: 240px; min-height: 74px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 12px 13px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); scroll-snap-align: start; }
+.timeline-card { width: 240px; min-height: 74px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 18px; background: var(--card); scroll-snap-align: start; }
 .timeline-card time { color: var(--primary); font-size: 11px; font-weight: 600; }
 .timeline-card strong { display: -webkit-box; overflow: hidden; color: var(--foreground); font-size: 13px; font-weight: 500; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .add { display: flex; flex-direction: column; gap: 16px; }
-.add label, .add legend { color: var(--muted-foreground); font-size: 12px; font-weight: 600; }
-.add input, .add textarea { width: 100%; margin-top: 7px; color: var(--foreground); background: var(--background); font-size: 14px; line-height: 1.5; resize: none; }
+.add label, .add legend { display: block; width: 100%; color: var(--muted-foreground); font-size: 12px; font-weight: 600; line-height: 1.45; white-space: normal; }
+.add input, .add textarea { display: block; width: 100%; margin-top: 7px; color: var(--foreground); background: var(--background); font-size: 14px; line-height: 1.5; resize: none; }
+.add input { white-space: normal; }
+.add textarea { overflow-wrap: anywhere; word-break: keep-all; }
 .add textarea { min-height: 88px; }
 .add fieldset { padding: 0; margin: 0; border: 0; }
 .options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 7px; }
@@ -203,5 +215,7 @@ button { cursor: pointer; }
 .help-link { height: auto; padding: 0; font-size: inherit; }
 .sync { display: flex; justify-content: space-between; padding: 12px; margin-top: 12px; color: var(--muted-foreground); background: var(--muted); border-radius: var(--radius-lg); font-size: 11px; }
 .sync strong { color: var(--foreground); font-weight: 500; }
+.undo-toast { position: absolute; bottom: 13px; left: 13px; right: 13px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 15px; background: var(--foreground); color: var(--background); box-shadow: 0 16px 55px oklch(0 0 0 / .10); font-size: 12px; }
+.undo-toast button { color: var(--background); font-size: 12px; font-weight: 650; }
 
 @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }

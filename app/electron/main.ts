@@ -2,16 +2,18 @@ import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, s
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTask, load, save } from './store.js';
-import { appendNotionTodo, fetchMicrosoftEvents, fetchNotionData, readCredentials, refreshMicrosoftToken, startMicrosoftSignIn, updateNotionTodo, updateNotionTodoPriority, updateNotionTodoTitle, waitForMicrosoftSignIn, writeCredentials } from './integrations.js';
+import { appendNotionTodo, deleteNotionTodo, fetchMicrosoftEvents, fetchNotionData, readCredentials, refreshMicrosoftToken, restoreNotionTodo, startMicrosoftSignIn, updateNotionTodo, updateNotionTodoPriority, updateNotionTodoTitle, waitForMicrosoftSignIn, writeCredentials } from './integrations.js';
 import type { AppState, CalendarEvent, Priority, Settings, Task } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WINDOW_WIDTH = 360;
-const COLLAPSED_HEIGHT = 76;
+const COLLAPSED_HEIGHT = 128;
 const EXPANDED_HEIGHT = 560;
 const TOP_MARGIN = 16;
 
 let widgetWindow: BrowserWindow | null = null;
+let hoverWindow: BrowserWindow | null = null;
+let hoverRequestVersion = 0;
 let tray: Tray | null = null;
 let state: AppState;
 let quitting = false;
@@ -34,6 +36,28 @@ function visiblePosition(position: { x: number; y: number }) {
     x: Math.min(Math.max(position.x, area.x), area.x + area.width - WINDOW_WIDTH),
     y: Math.min(Math.max(position.y, area.y), area.y + area.height - COLLAPSED_HEIGHT),
   };
+}
+
+function positionHoverWindow() {
+  if (!widgetWindow || !hoverWindow) return;
+  const bounds = widgetWindow.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const x = Math.round(bounds.x + (bounds.width - 156) / 2);
+  const y = bounds.y + bounds.height + 3 + 39 <= area.y + area.height
+    ? bounds.y + bounds.height + 3 : bounds.y - 42;
+  hoverWindow.setPosition(x, y, false);
+}
+
+async function createHoverWindow() {
+  hoverWindow = new BrowserWindow({
+    width: 156, height: 39, frame: false, transparent: true, resizable: false,
+    focusable: false, skipTaskbar: true, show: false, alwaysOnTop: state.settings.alwaysOnTop,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  hoverWindow.setIgnoreMouseEvents(true);
+  hoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;font-family:-apple-system,BlinkMacSystemFont,sans-serif}body{display:grid;place-items:center;height:39px}.pill{padding:7px 13px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;font-size:12px;box-shadow:0 8px 30px rgba(0,0,0,.045);white-space:nowrap}.pill b{color:#3977eb;font-weight:650}</style></head><body><div class="pill">남은 할 일 <b id="count">0개</b></div></body></html>';
+  await hoverWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
 async function persist() {
@@ -109,9 +133,11 @@ async function createWindow() {
     if (!quitting) {
       event.preventDefault();
       widgetWindow?.hide();
+      hoverWindow?.hide();
     }
   });
   widgetWindow.on('move', () => {
+    positionHoverWindow();
     if (!widgetWindow) return;
     if (positionSaveTimer) clearTimeout(positionSaveTimer);
     positionSaveTimer = setTimeout(() => {
@@ -124,6 +150,7 @@ async function createWindow() {
 
   if (process.env.VITE_DEV_SERVER_URL) await widgetWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   else await widgetWindow.loadFile(path.join(here, '../dist/index.html'));
+  await createHoverWindow();
   widgetWindow.showInactive();
 }
 
@@ -137,7 +164,10 @@ function createTray() {
     { type: 'separator' },
     { label: '종료', click: () => { quitting = true; app.quit(); } },
   ]));
-  tray.on('click', () => widgetWindow?.isVisible() ? widgetWindow.hide() : widgetWindow?.showInactive());
+  tray.on('click', () => {
+    if (widgetWindow?.isVisible()) { widgetWindow.hide(); hoverWindow?.hide(); }
+    else widgetWindow?.showInactive();
+  });
 }
 
 function resetWindowPosition() {
@@ -323,9 +353,44 @@ ipcMain.handle('task:priority', async (_event, id: string, priority: Priority) =
   await persist();
   return item;
 });
+ipcMain.handle('task:delete', async (_event, id: string) => {
+  const item = state.tasks.find((candidate) => candidate.id === id);
+  if (!item) throw new Error('삭제할 할 일을 찾을 수 없습니다.');
+  if (item.notionBlockId) {
+    const { notionToken } = await readCredentials();
+    if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
+    await deleteNotionTodo(notionToken, item.notionBlockId);
+  }
+  state.tasks = state.tasks.filter((candidate) => candidate.id !== id);
+  cancelReminder(id);
+  await persist();
+});
+ipcMain.handle('task:restore', async (_event, task: Task) => {
+  if (!task?.id || state.tasks.some((candidate) => candidate.id === task.id)) throw new Error('되돌릴 할 일을 찾을 수 없습니다.');
+  if (task.notionBlockId) {
+    const { notionToken } = await readCredentials();
+    if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
+    await restoreNotionTodo(notionToken, task.notionBlockId);
+  }
+  state.tasks.push(task);
+  scheduleReminder(task);
+  await persist();
+});
+ipcMain.handle('widget:hover-count', async (_event, count: number | null) => {
+  const version = ++hoverRequestVersion;
+  if (!hoverWindow || !widgetWindow || count === null || !Number.isInteger(count) || count < 0 || !widgetWindow.isVisible() || widgetWindow.getBounds().height !== COLLAPSED_HEIGHT) {
+    hoverWindow?.hide();
+    return;
+  }
+  await hoverWindow.webContents.executeJavaScript(`document.getElementById('count').textContent = ${JSON.stringify(`${count}개`)}`);
+  if (version !== hoverRequestVersion) return;
+  positionHoverWindow();
+  hoverWindow.showInactive();
+});
 ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
   state.settings = { ...state.settings, ...patch };
   widgetWindow?.setAlwaysOnTop(state.settings.alwaysOnTop);
+  hoverWindow?.setAlwaysOnTop(state.settings.alwaysOnTop);
   app.setLoginItemSettings({ openAtLogin: state.settings.launchAtLogin });
   rescheduleAllReminders();
   await persist();
@@ -333,12 +398,14 @@ ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
 });
 ipcMain.handle('window:expand', (_event, expanded: boolean) => {
   if (!widgetWindow) return;
+  if (expanded) hoverWindow?.hide();
   const bounds = widgetWindow.getBounds();
   const maximum = screen.getDisplayMatching(bounds).workArea.height - 40;
   const height = expanded ? Math.min(EXPANDED_HEIGHT, maximum) : COLLAPSED_HEIGHT;
   widgetWindow.setResizable(true);
   widgetWindow.setBounds({ ...bounds, height }, true);
   widgetWindow.setResizable(false);
+  positionHoverWindow();
 });
 ipcMain.handle('window:reset-position', () => resetWindowPosition());
 
