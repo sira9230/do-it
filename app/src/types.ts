@@ -70,6 +70,7 @@ export interface DoitAPI {
   setPreviewHovered(hovered: boolean, count: number): Promise<void>;
   updateSettings(patch: Partial<Settings>): Promise<Settings>;
   setExpanded(expanded: boolean): Promise<void>;
+  quitApp(): Promise<void>;
   resetWindowPosition(): Promise<void>;
   connectNotion(token: string): Promise<number>;
   connectMicrosoft(clientId: string): Promise<{ userCode: string; verificationUri: string }>;

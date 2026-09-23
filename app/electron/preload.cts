@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('doit', {
   setPreviewHovered: (hovered: boolean, count: number): Promise<void> => ipcRenderer.invoke('window:preview-hover', hovered, count),
   updateSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:update', patch),
   setExpanded: (expanded: boolean): Promise<void> => ipcRenderer.invoke('window:expand', expanded),
+  quitApp: (): Promise<void> => ipcRenderer.invoke('window:quit'),
   resetWindowPosition: (): Promise<void> => ipcRenderer.invoke('window:reset-position'),
   connectNotion: (token: string): Promise<number> => ipcRenderer.invoke('notion:connect', token),
   connectMicrosoft: (clientId: string): Promise<{ userCode: string; verificationUri: string }> => ipcRenderer.invoke('microsoft:connect', clientId),

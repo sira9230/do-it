@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, MotionConfig, type PanInfo } from 'motion/react';
-import { ArrowLeft, ChevronDown, ChevronUp, Clock3, ExternalLink, Pencil, Plus, Settings2, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Clock3, ExternalLink, GripHorizontal, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox';
@@ -121,9 +121,10 @@ function PrioritySelector({ task, onChange }: { task: Task; onChange: (id: strin
   );
 }
 
-function TaskRow({ task, onToggle, onPriority, onEdit, onDelete }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void }) {
+function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragFinish }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void; onDragFinish?: () => void }) {
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
+    onDragFinish?.();
     if (onDelete && Math.hypot(info.offset.x, info.offset.y) > 115) onDelete(task.id);
     setDragPoint(null);
   }
@@ -321,6 +322,7 @@ export function App() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [now, setNow] = useState(new Date());
+  const lastDragAt = useRef(0);
 
   useEffect(() => {
     window.doit.getState().then((next) => { setState(next); setLoaded(true); });
@@ -386,6 +388,13 @@ export function App() {
     void window.doit.setExpanded(false);
   }
 
+  function handleSurfaceClick(event: React.MouseEvent<HTMLElement>) {
+    if (!expanded || Date.now() - lastDragAt.current < 600) return;
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('button, input, textarea, select, a, [role="checkbox"], [role="menuitem"], [contenteditable="true"]')) return;
+    collapse();
+  }
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && expanded) collapse(); };
     window.addEventListener('keydown', handleKeyDown);
@@ -398,9 +407,10 @@ export function App() {
   if (!loaded) return <main className="shell loading"><Bosongi /><span>두잇 준비 중…</span></main>;
 
   return <MotionConfig reducedMotion="user">
-    <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
       {!expanded ? (
-        <div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요">
+        <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 29 }}>
+          <button type="button" className="widget-close collapsed-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3.5" /></button>
           <AnimatePresence initial={false}>
             {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .9, opacity: 0, filter: 'blur(3px)' }} animate={{ y: index * 62, scale: 1 - index * .045, opacity: 1 - index * .17, filter: 'blur(0px)' }} exit={{ y: -48, scale: .92, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 470, damping: 29, delay: index * .055 }} style={{ zIndex: 3 - index }} onClick={() => open()} aria-label={`${task.title} · 할 일 목록 열기`}>
               {index === 0 ? <Bosongi /> : null}
@@ -412,25 +422,25 @@ export function App() {
             </motion.button>)}
           </AnimatePresence>
           {!remaining.length ? <button className="preview-card current preview-empty interactive" onClick={() => open('add')}><Bosongi /><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
-        </div>
+        </motion.div>
       ) : (
-        <div className="expanded-inner">
+        <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .965, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ type: 'spring', stiffness: 280, damping: 30 }}>
           <header>
-            <Button variant="ghost" className="brand interactive" onClick={() => setPage('home')}><Bosongi /><span>Do it</span></Button>
-            <div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => setPage('settings')}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
+            <div className="header-leading"><button type="button" className="widget-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3.5" /></button><Button variant="ghost" className="brand interactive" onClick={collapse}><Bosongi /><span>Do it</span></Button></div>
+            <div><div className="window-grip" title="위젯 위치 이동" aria-label="위젯 위치 이동"><GripHorizontal className="size-4" /></div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => setPage('settings')}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
           </header>
           {page === 'add' ? <AddTask onClose={() => setPage('home')} notionPages={todayNotionPages} /> : page === 'edit' && editingTask ? <EditTask key={editingTask.id} task={editingTask} onClose={() => setPage('home')} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
             <section className="page home">
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
               <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="add-trigger" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
-              <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />)}</AnimatePresence></div>
+              <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
               {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
               {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}
               <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="ghost" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
             </section>
           )}
-        </div>
+        </motion.div>
       )}
     </main>
   </MotionConfig>;
