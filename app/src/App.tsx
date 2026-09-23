@@ -125,15 +125,15 @@ function TaskRow({ task, onToggle, onPriority, onEdit }: { task: Task; onToggle:
       <TaskCheckbox task={task} onToggle={onToggle} />
       <div>
         <div className="title-line">
-          <strong>{task.title}</strong>
           <PrioritySelector task={task} onChange={onPriority} />
+          <strong>{task.title}</strong>
           <Button variant="ghost" size="icon-xs" className="edit-task" aria-label={`${task.title} 수정`} onClick={() => onEdit(task.id)}><Pencil className="size-3.5" /></Button>
         </div>
         {task.summary ? <p>{task.summary}</p> : null}
         {task.notionPageId ? <div className="task-source">
           <span>{task.sourcePageTitle ?? 'Notion 회의록'}</span>
           <Button variant="link" className="source-link" onClick={() => void window.doit.openNotionPage(task.notionPageId!)}>
-            Notion에서 열기 <ExternalLink className="size-3" />
+            Notion <ExternalLink className="size-3" />
           </Button>
         </div> : null}
         {task.reminderAt && task.status !== 'done'
@@ -169,7 +169,7 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
     <Label>할 일<Input autoFocus maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} /></Label>
     {task.notionBlockId ? <div className="edit-context"><strong>설명 · 상위 항목</strong><p>{task.summary || '상위 항목이 없어요.'}</p><small>상위 항목은 Notion 회의록에서 변경할 수 있어요.</small></div>
       : <Label>짧은 설명<Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>}
-    {task.notionPageId ? <Button type="button" variant="link" className="edit-notion-link" onClick={() => void window.doit.openNotionPage(task.notionPageId!)}>Notion에서 열기 <ExternalLink className="size-3.5" /></Button> : null}
+    {task.notionPageId ? <Button type="button" variant="link" className="edit-notion-link" onClick={() => void window.doit.openNotionPage(task.notionPageId!)}>Notion <ExternalLink className="size-3.5" /></Button> : null}
     {error ? <p className="error" role="alert">{error}</p> : null}
     <Button type="submit" className="primary" disabled={saving}>{saving ? '저장 중…' : '변경 사항 저장'}</Button>
   </form>;
@@ -359,9 +359,9 @@ export function App() {
           <div className="collapsed-copy">
             {meeting ? <div className="meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
             {representative ? (
-              <div className="hero"><TaskCheckbox task={representative} onToggle={toggle} /><strong>{state.settings.privacyMode ? '할 일' : representative.title}</strong><PrioritySelector task={representative} onChange={changePriority} /></div>
+              <div className="hero"><Badge variant="secondary" className={`priority ${representative.priority.toLowerCase()}`}>{priorityMeta[representative.priority].label}</Badge><strong>{state.settings.privacyMode ? '할 일' : representative.title}</strong></div>
             ) : <Button variant="ghost" className="empty interactive" onClick={() => open('add')}>오늘 할 일을 추가해볼까요?</Button>}
-            <div className={`count ${hovered ? 'visible' : ''}`}>오늘 남은 할 일 {remaining.length}개</div>
+            <div className={`count ${hovered ? 'visible' : ''}`}>오늘 남은 할 일 <span className="task-count">{remaining.length}개</span></div>
           </div>
           <Button variant="ghost" size="icon" className="icon interactive" aria-label="전체 할 일 보기" onClick={() => open()}><Chevron /></Button>
         </div>
@@ -375,7 +375,7 @@ export function App() {
             <section className="page home">
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
-              <div className="heading"><div><span className="eyebrow">TODAY</span><h1>남은 할 일 {remaining.length}개</h1></div><Button variant="ghost" className="text" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
+              <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="text" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
               <div className="list">{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} />)}</div>
               {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
               {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} />) : null}</div> : null}
