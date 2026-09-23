@@ -156,7 +156,7 @@ function replaceNotionTasks(tasks: Task[]) {
   const previous = new Map(state.tasks.filter((task) => task.notionBlockId).map((task) => [task.id, task]));
   state.tasks = [...state.tasks.filter((task) => !task.notionBlockId), ...tasks.map((task) => {
     const local = previous.get(task.id);
-    return { ...task, summary: local?.summary ?? task.summary, reminderAt: local?.reminderAt ?? null };
+    return { ...task, reminderAt: local?.reminderAt ?? null };
   })];
   rescheduleAllReminders();
 }
@@ -238,6 +238,10 @@ ipcMain.handle('help:open', (_event, service: 'notion' | 'microsoft') => {
   };
   if (!Object.hasOwn(urls, service)) throw new Error('지원하지 않는 도움말입니다.');
   return shell.openExternal(urls[service]);
+});
+ipcMain.handle('notion:open-page', (_event, pageId: string) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pageId)) throw new Error('Notion 페이지 ID를 확인해주세요.');
+  return shell.openExternal(`https://app.notion.com/p/${pageId.replaceAll('-', '')}`);
 });
 
 ipcMain.handle('state:get', () => state);

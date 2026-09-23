@@ -13,6 +13,7 @@ export interface Task {
   updatedAt: string;
   notionPageId?: string;
   notionBlockId?: string;
+  sourcePageTitle?: string;
 }
 
 export interface CalendarEvent {
@@ -69,6 +70,7 @@ export interface DoitAPI {
   connectMicrosoft(clientId: string): Promise<{ userCode: string; verificationUri: string }>;
   refreshSync(): Promise<AppState>;
   openHelp(service: 'notion' | 'microsoft'): Promise<void>;
+  openNotionPage(pageId: string): Promise<void>;
   onStateChanged(callback: (state: AppState) => void): () => void;
 }
 

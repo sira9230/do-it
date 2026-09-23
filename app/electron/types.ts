@@ -14,6 +14,7 @@ export interface Task {
   updatedAt: string;
   notionPageId?: string;
   notionBlockId?: string;
+  sourcePageTitle?: string;
 }
 
 export interface CalendarEvent {

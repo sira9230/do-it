@@ -55,10 +55,44 @@ interface NotionBlock {
   type: string;
   has_children?: boolean;
   last_edited_time?: string;
-  to_do?: { checked: boolean; color?: string; rich_text: { plain_text?: string }[] };
-  paragraph?: { rich_text: { plain_text?: string }[] };
-  bulleted_list_item?: { rich_text: { plain_text?: string }[] };
-  numbered_list_item?: { rich_text: { plain_text?: string }[] };
+  to_do?: { checked: boolean; color?: string; rich_text: NotionRichText[] };
+  paragraph?: { rich_text: NotionRichText[] };
+  bulleted_list_item?: { rich_text: NotionRichText[] };
+  numbered_list_item?: { rich_text: NotionRichText[] };
+  heading_1?: { rich_text: NotionRichText[] };
+  heading_2?: { rich_text: NotionRichText[] };
+  heading_3?: { rich_text: NotionRichText[] };
+}
+
+interface NotionRichText {
+  type?: string;
+  plain_text?: string;
+  text?: { content: string; link?: { url: string } | null };
+  annotations?: { code?: boolean; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
+interface ContextualBlock { block: NotionBlock; description: string }
+
+function isPriorityCode(part: NotionRichText) {
+  return part.annotations?.code === true && !!part.text && /^P[123]$/i.test((part.plain_text ?? part.text.content).trim());
+}
+
+function blockRichText(block: NotionBlock): NotionRichText[] {
+  return block.to_do?.rich_text ?? block.paragraph?.rich_text ?? block.bulleted_list_item?.rich_text
+    ?? block.numbered_list_item?.rich_text ?? block.heading_1?.rich_text ?? block.heading_2?.rich_text
+    ?? block.heading_3?.rich_text ?? [];
+}
+
+function blockText(block: NotionBlock) {
+  return blockRichText(block).filter((part) => !isPriorityCode(part))
+    .map((part) => part.plain_text ?? part.text?.content ?? '').join('').replace(/\s{2,}/g, ' ').trim();
+}
+
+function blockPriority(block: NotionBlock): Priority {
+  const code = block.to_do?.rich_text.find(isPriorityCode);
+  if (code) return (code.plain_text ?? code.text?.content ?? '').trim().toUpperCase() as Priority;
+  return notionPriority(block.to_do?.color);
 }
 
 function notionHeaders(token: string) {
@@ -117,9 +151,10 @@ function parseMeetingLine(value: string, day: string, pageId: string, blockId: s
   };
 }
 
-async function fetchPageBlocks(token: string, blockId: string, depth = 0): Promise<NotionBlock[]> {
+async function fetchPageBlocks(token: string, blockId: string, depth = 0, inheritedDescription = ''): Promise<ContextualBlock[]> {
   if (depth > 5) return [];
-  const found: NotionBlock[] = [];
+  const found: ContextualBlock[] = [];
+  let heading = inheritedDescription;
   let cursor: string | undefined;
   do {
     const url = new URL(`https://api.notion.com/v1/blocks/${blockId}/children`);
@@ -129,10 +164,12 @@ async function fetchPageBlocks(token: string, blockId: string, depth = 0): Promi
       url.toString(), { headers: notionHeaders(token) },
     );
     for (const block of data.results) {
-      found.push(block);
+      if (/^heading_[123]$/.test(block.type)) heading = blockText(block) || heading;
+      found.push({ block, description: heading });
       if (block.has_children && block.type !== 'child_page' && block.type !== 'child_database') {
         await new Promise((resolve) => setTimeout(resolve, 350));
-        found.push(...await fetchPageBlocks(token, block.id, depth + 1));
+        const parentTitle = blockText(block);
+        found.push(...await fetchPageBlocks(token, block.id, depth + 1, parentTitle || heading));
       }
     }
     cursor = data.has_more ? data.next_cursor ?? undefined : undefined;
@@ -185,23 +222,22 @@ export async function fetchNotionData(token: string): Promise<{ events: Calendar
       });
       if (dateString(date.start) === dateString(now.toISOString())) {
         const pageTitle = page.properties.Name?.title?.map((part) => part.plain_text ?? '').join('') || '회의록';
-        for (const block of await fetchPageBlocks(token, page.id)) {
-          const richText = block.to_do?.rich_text ?? block.paragraph?.rich_text
-            ?? block.bulleted_list_item?.rich_text ?? block.numbered_list_item?.rich_text;
-          const content = richText?.map((part) => part.plain_text ?? '').join('').trim() ?? '';
+        for (const { block, description } of await fetchPageBlocks(token, page.id)) {
+          const content = blockText(block);
           const meeting = parseMeetingLine(content, dateString(date.start), page.id, block.id);
           if (meeting) events.push(meeting);
           if (block.type !== 'to_do') continue;
-          const title = block.to_do?.rich_text?.map((part) => part.plain_text ?? '').join('').trim();
+          const title = blockText(block);
           if (!title) continue;
           const updatedAt = block.last_edited_time ?? page.last_edited_time ?? new Date().toISOString();
           tasks.push({
             id: `notion:${block.id}`,
             notionPageId: page.id,
             notionBlockId: block.id,
+            sourcePageTitle: pageTitle,
             title,
-            summary: pageTitle,
-            priority: notionPriority(block.to_do?.color),
+            summary: description,
+            priority: blockPriority(block),
             status: block.to_do?.checked ? 'done' : 'todo',
             plannedDate: dateString(date.start),
             reminderAt: null,
@@ -227,10 +263,21 @@ export async function updateNotionTodo(token: string, blockId: string, checked: 
 
 export async function updateNotionTodoPriority(token: string, blockId: string, priority: Priority) {
   const color = priority === 'P1' ? 'red_background' : priority === 'P3' ? 'gray_background' : 'blue_background';
+  const current = await responseJson<NotionBlock>(`https://api.notion.com/v1/blocks/${blockId}`, { headers: notionHeaders(token) });
+  if (current.type !== 'to_do' || !current.to_do) throw new Error('Notion 체크박스를 찾을 수 없습니다.');
+  const richText = current.to_do.rich_text.map((part) => {
+    const { plain_text: _plainText, href: _href, ...writable } = part;
+    if (isPriorityCode(part) && writable.text) return { ...writable, text: { ...writable.text, content: writable.text.content.replace(/P[123]/i, priority) } };
+    return writable;
+  });
+  if (!current.to_do.rich_text.some(isPriorityCode)) {
+    richText.push({ type: 'text', text: { content: ' ' } });
+    richText.push({ type: 'text', text: { content: priority }, annotations: { code: true } });
+  }
   await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
     method: 'PATCH',
     headers: notionHeaders(token),
-    body: JSON.stringify({ to_do: { color } }),
+    body: JSON.stringify({ to_do: { color, rich_text: richText } }),
   });
 }
 
@@ -246,7 +293,11 @@ export async function appendNotionTodo(token: string, pageId: string, title: str
           object: 'block',
           type: 'to_do',
           to_do: {
-            rich_text: [{ type: 'text', text: { content: title } }],
+            rich_text: [
+              { type: 'text', text: { content: title } },
+              { type: 'text', text: { content: ' ' } },
+              { type: 'text', text: { content: priority }, annotations: { code: true } },
+            ],
             checked: false,
             color,
           },
