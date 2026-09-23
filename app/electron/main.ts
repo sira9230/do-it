@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, s
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTask, load, save } from './store.js';
-import { fetchMicrosoftEvents, fetchNotionEvents, readCredentials, refreshMicrosoftToken, startMicrosoftSignIn, waitForMicrosoftSignIn, writeCredentials } from './integrations.js';
+import { appendNotionTodo, fetchMicrosoftEvents, fetchNotionData, readCredentials, refreshMicrosoftToken, startMicrosoftSignIn, updateNotionTodo, updateNotionTodoPriority, waitForMicrosoftSignIn, writeCredentials } from './integrations.js';
 import type { AppState, CalendarEvent, Priority, Settings, Task } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -152,11 +152,22 @@ function replaceEvents(source: 'notion' | 'microsoft', events: CalendarEvent[]) 
     .sort((a, b) => a.startAt.localeCompare(b.startAt));
 }
 
+function replaceNotionTasks(tasks: Task[]) {
+  const previous = new Map(state.tasks.filter((task) => task.notionBlockId).map((task) => [task.id, task]));
+  state.tasks = [...state.tasks.filter((task) => !task.notionBlockId), ...tasks.map((task) => {
+    const local = previous.get(task.id);
+    return { ...task, summary: local?.summary ?? task.summary, reminderAt: local?.reminderAt ?? null };
+  })];
+  rescheduleAllReminders();
+}
+
 async function refreshNotion() {
   const { notionToken } = await readCredentials();
   if (!notionToken) return;
   try {
-    replaceEvents('notion', await fetchNotionEvents(notionToken));
+    const data = await fetchNotionData(notionToken);
+    replaceEvents('notion', data.events);
+    replaceNotionTasks(data.tasks);
     state.sync.notion = 'synced';
     state.sync.notionError = null;
     state.sync.lastSuccessAt = new Date().toISOString();
@@ -187,14 +198,15 @@ async function refreshMicrosoft() {
 
 ipcMain.handle('notion:connect', async (_event, token: string) => {
   if (!token.trim()) throw new Error('Notion 통합 토큰을 입력해주세요.');
-  const events = await fetchNotionEvents(token.trim());
+  const data = await fetchNotionData(token.trim());
   await writeCredentials({ notionToken: token.trim() });
-  replaceEvents('notion', events);
+  replaceEvents('notion', data.events);
+  replaceNotionTasks(data.tasks);
   state.sync.notion = 'synced';
   state.sync.notionError = null;
   state.sync.lastSuccessAt = new Date().toISOString();
   await persist();
-  return events.length;
+  return data.events.length;
 });
 ipcMain.handle('microsoft:connect', async (_event, clientId: string) => {
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(clientId.trim())) throw new Error('Microsoft 앱 클라이언트 ID를 확인해주세요.');
@@ -235,10 +247,21 @@ ipcMain.handle('task:create', async (_event, input: {
   priority: Priority;
   plannedDate: string;
   reminderAt: string | null;
+  notionPageId?: string | null;
 }) => {
   if (!input.title.trim() || input.title.trim().length > 200) throw new Error('제목은 1~200자로 입력해주세요.');
   if (input.reminderAt && new Date(input.reminderAt).getTime() <= Date.now()) throw new Error('리마인드는 현재보다 뒤의 시간으로 설정해주세요.');
   const next = createTask({ ...input, title: input.title.trim(), summary: input.summary.trim() });
+  if (input.notionPageId) {
+    const page = state.events.find((event) => event.id === `notion:${input.notionPageId}`);
+    if (!page) throw new Error('선택한 Notion 회의록 페이지를 찾을 수 없습니다.');
+    const { notionToken } = await readCredentials();
+    if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
+    const blockId = await appendNotionTodo(notionToken, input.notionPageId, next.title, next.priority);
+    next.id = `notion:${blockId}`;
+    next.notionPageId = input.notionPageId;
+    next.notionBlockId = blockId;
+  }
   state.tasks.push(next);
   scheduleReminder(next);
   await persist();
@@ -248,11 +271,30 @@ ipcMain.handle('task:toggle', async (_event, id: string) => {
   const item = state.tasks.find((candidate) => candidate.id === id);
   if (!item) throw new Error('할 일을 찾을 수 없습니다.');
   const wasDone = item.status === 'done';
+  if (item.notionBlockId) {
+    const { notionToken } = await readCredentials();
+    if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
+    await updateNotionTodo(notionToken, item.notionBlockId, wasDone);
+  }
   const now = new Date().toISOString();
   item.status = wasDone ? 'todo' : 'done';
   item.completedAt = wasDone ? null : now;
   item.updatedAt = now;
   if (wasDone) scheduleReminder(item); else cancelReminder(item.id);
+  await persist();
+  return item;
+});
+ipcMain.handle('task:priority', async (_event, id: string, priority: Priority) => {
+  if (!['P1', 'P2', 'P3'].includes(priority)) throw new Error('중요도를 확인해주세요.');
+  const item = state.tasks.find((candidate) => candidate.id === id);
+  if (!item) throw new Error('할 일을 찾을 수 없습니다.');
+  if (item.notionBlockId) {
+    const { notionToken } = await readCredentials();
+    if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
+    await updateNotionTodoPriority(notionToken, item.notionBlockId, priority);
+  }
+  item.priority = priority;
+  item.updatedAt = new Date().toISOString();
   await persist();
   return item;
 });

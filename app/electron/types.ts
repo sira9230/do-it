@@ -12,6 +12,8 @@ export interface Task {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  notionPageId?: string;
+  notionBlockId?: string;
 }
 
 export interface CalendarEvent {
@@ -21,6 +23,7 @@ export interface CalendarEvent {
   endAt: string;
   source?: 'notion' | 'microsoft';
   isAllDay?: boolean;
+  isMeeting?: boolean;
   isCanceled: boolean;
   responseStatus: 'accepted' | 'tentative' | 'declined' | 'none';
 }

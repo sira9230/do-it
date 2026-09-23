@@ -9,8 +9,10 @@ contextBridge.exposeInMainWorld('doit', {
     priority: Priority;
     plannedDate: string;
     reminderAt: string | null;
+    notionPageId?: string | null;
   }): Promise<Task> => ipcRenderer.invoke('task:create', input),
   toggleTask: (id: string): Promise<Task> => ipcRenderer.invoke('task:toggle', id),
+  setTaskPriority: (id: string, priority: Priority): Promise<Task> => ipcRenderer.invoke('task:priority', id, priority),
   updateSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:update', patch),
   setExpanded: (expanded: boolean): Promise<void> => ipcRenderer.invoke('window:expand', expanded),
   resetWindowPosition: (): Promise<void> => ipcRenderer.invoke('window:reset-position'),

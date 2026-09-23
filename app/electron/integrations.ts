@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { CalendarEvent } from './types.js';
+import type { CalendarEvent, Priority, Task } from './types.js';
 
 const NOTION_DATA_SOURCE = '159563d4-3059-8187-9a21-000b9c31881e';
 const NOTION_VERSION = '2025-09-03';
@@ -41,24 +41,127 @@ async function responseJson<T>(url: string, init: RequestInit): Promise<T> {
 interface NotionPage {
   id: string;
   archived?: boolean;
+  created_time?: string;
+  last_edited_time?: string;
   properties: {
     Name?: { title?: { plain_text?: string }[] };
     날짜?: { date?: { start: string; end?: string | null } | null };
+    중요도?: { select?: { name: string } | null; status?: { name: string } | null };
   };
 }
 
-export async function fetchNotionEvents(token: string): Promise<CalendarEvent[]> {
-  const headers = {
+interface NotionBlock {
+  id: string;
+  type: string;
+  has_children?: boolean;
+  last_edited_time?: string;
+  to_do?: { checked: boolean; color?: string; rich_text: { plain_text?: string }[] };
+  paragraph?: { rich_text: { plain_text?: string }[] };
+  bulleted_list_item?: { rich_text: { plain_text?: string }[] };
+  numbered_list_item?: { rich_text: { plain_text?: string }[] };
+}
+
+function notionHeaders(token: string) {
+  return {
     Authorization: `Bearer ${token}`,
     'Notion-Version': NOTION_VERSION,
     'Content-Type': 'application/json',
   };
-  const events: CalendarEvent[] = [];
+}
+
+function dateString(value: string) {
+  if (!value.includes('T')) return value;
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function notionPriority(value?: string): Priority {
+  if (value === 'red_background' || value === 'red') return 'P1';
+  if (value === 'gray_background' || value === 'gray') return 'P3';
+  return 'P2';
+}
+
+function parseMeetingLine(value: string, day: string, pageId: string, blockId: string): CalendarEvent | null {
+  const match = value.trim().match(/^(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*시?\s*(?:[~～\-–]\s*(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*시?)?\s+(.+)$/);
+  if (!match) return null;
+  const title = match[7].trim();
+  if (!/(회의|미팅|면담|콜|워크숍)/.test(title)) return null;
+  const toHour = (hour: number, meridiem?: string) => {
+    if (meridiem === '오전') return hour === 12 ? 0 : hour;
+    if (meridiem === '오후') return hour === 12 ? 12 : hour % 12 + 12;
+    return hour >= 1 && hour <= 6 ? hour + 12 : hour;
+  };
+  const startHour = toHour(Number(match[2]), match[1]);
+  const startMinute = Number(match[3] ?? 0);
+  if (startHour > 23 || startMinute > 59) return null;
+  const start = new Date(`${day}T00:00:00`);
+  start.setHours(startHour, startMinute, 0, 0);
+  const end = new Date(start);
+  if (match[5]) {
+    const endHour = toHour(Number(match[5]), match[4]);
+    const endMinute = Number(match[6] ?? 0);
+    if (endHour > 23 || endMinute > 59) return null;
+    end.setHours(endHour, endMinute, 0, 0);
+    if (end <= start) end.setDate(end.getDate() + 1);
+  } else end.setHours(end.getHours() + 1);
+  return {
+    id: `notion-item:${pageId}:${blockId}`,
+    title,
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+    source: 'notion',
+    isMeeting: true,
+    isAllDay: false,
+    isCanceled: false,
+    responseStatus: 'none',
+  };
+}
+
+async function fetchPageBlocks(token: string, blockId: string, depth = 0): Promise<NotionBlock[]> {
+  if (depth > 5) return [];
+  const found: NotionBlock[] = [];
   let cursor: string | undefined;
+  do {
+    const url = new URL(`https://api.notion.com/v1/blocks/${blockId}/children`);
+    url.searchParams.set('page_size', '100');
+    if (cursor) url.searchParams.set('start_cursor', cursor);
+    const data = await responseJson<{ results: NotionBlock[]; has_more: boolean; next_cursor: string | null }>(
+      url.toString(), { headers: notionHeaders(token) },
+    );
+    for (const block of data.results) {
+      found.push(block);
+      if (block.has_children && block.type !== 'child_page' && block.type !== 'child_database') {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        found.push(...await fetchPageBlocks(token, block.id, depth + 1));
+      }
+    }
+    cursor = data.has_more ? data.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return found;
+}
+
+export async function fetchNotionData(token: string): Promise<{ events: CalendarEvent[]; tasks: Task[] }> {
+  const headers = {
+    ...notionHeaders(token),
+  };
+  const events: CalendarEvent[] = [];
+  const tasks: Task[] = [];
+  let cursor: string | undefined;
+  const now = new Date();
+  const windowStart = new Date(now);
+  windowStart.setDate(windowStart.getDate() - 1);
+  const windowEnd = new Date(now);
+  windowEnd.setDate(windowEnd.getDate() + 31);
+  const dateFilter = {
+    and: [
+      { property: '날짜', date: { on_or_after: dateString(windowStart.toISOString()) } },
+      { property: '날짜', date: { on_or_before: dateString(windowEnd.toISOString()) } },
+    ],
+  };
   do {
     const data = await responseJson<{ results: NotionPage[]; has_more: boolean; next_cursor: string | null }>(
       `https://api.notion.com/v1/data_sources/${NOTION_DATA_SOURCE}/query`,
-      { method: 'POST', headers, body: JSON.stringify({ page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) }) },
+      { method: 'POST', headers, body: JSON.stringify({ page_size: 100, filter: dateFilter, ...(cursor ? { start_cursor: cursor } : {}) }) },
     );
     for (const page of data.results) {
       if (page.archived) continue;
@@ -78,11 +181,81 @@ export async function fetchNotionEvents(token: string): Promise<CalendarEvent[]>
         isAllDay,
         isCanceled: false,
         responseStatus: 'none',
+        isMeeting: true,
       });
+      if (dateString(date.start) === dateString(now.toISOString())) {
+        const pageTitle = page.properties.Name?.title?.map((part) => part.plain_text ?? '').join('') || '회의록';
+        for (const block of await fetchPageBlocks(token, page.id)) {
+          const richText = block.to_do?.rich_text ?? block.paragraph?.rich_text
+            ?? block.bulleted_list_item?.rich_text ?? block.numbered_list_item?.rich_text;
+          const content = richText?.map((part) => part.plain_text ?? '').join('').trim() ?? '';
+          const meeting = parseMeetingLine(content, dateString(date.start), page.id, block.id);
+          if (meeting) events.push(meeting);
+          if (block.type !== 'to_do') continue;
+          const title = block.to_do?.rich_text?.map((part) => part.plain_text ?? '').join('').trim();
+          if (!title) continue;
+          const updatedAt = block.last_edited_time ?? page.last_edited_time ?? new Date().toISOString();
+          tasks.push({
+            id: `notion:${block.id}`,
+            notionPageId: page.id,
+            notionBlockId: block.id,
+            title,
+            summary: pageTitle,
+            priority: notionPriority(block.to_do?.color),
+            status: block.to_do?.checked ? 'done' : 'todo',
+            plannedDate: dateString(date.start),
+            reminderAt: null,
+            completedAt: block.to_do?.checked ? updatedAt : null,
+            createdAt: page.created_time ?? updatedAt,
+            updatedAt,
+          });
+        }
+      }
     }
     cursor = data.has_more ? data.next_cursor ?? undefined : undefined;
   } while (cursor);
-  return events;
+  return { events, tasks };
+}
+
+export async function updateNotionTodo(token: string, blockId: string, checked: boolean) {
+  await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
+    method: 'PATCH',
+    headers: notionHeaders(token),
+    body: JSON.stringify({ to_do: { checked } }),
+  });
+}
+
+export async function updateNotionTodoPriority(token: string, blockId: string, priority: Priority) {
+  const color = priority === 'P1' ? 'red_background' : priority === 'P3' ? 'gray_background' : 'blue_background';
+  await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
+    method: 'PATCH',
+    headers: notionHeaders(token),
+    body: JSON.stringify({ to_do: { color } }),
+  });
+}
+
+export async function appendNotionTodo(token: string, pageId: string, title: string, priority: Priority): Promise<string> {
+  const color = priority === 'P1' ? 'red_background' : priority === 'P3' ? 'gray_background' : 'blue_background';
+  const result = await responseJson<{ results: { id: string }[] }>(
+    `https://api.notion.com/v1/blocks/${pageId}/children`,
+    {
+      method: 'PATCH',
+      headers: notionHeaders(token),
+      body: JSON.stringify({
+        children: [{
+          object: 'block',
+          type: 'to_do',
+          to_do: {
+            rich_text: [{ type: 'text', text: { content: title } }],
+            checked: false,
+            color,
+          },
+        }],
+      }),
+    },
+  );
+  if (!result.results[0]?.id) throw new Error('Notion에서 새 체크박스 ID를 받지 못했습니다.');
+  return result.results[0].id;
 }
 
 interface DeviceCode {

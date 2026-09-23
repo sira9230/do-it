@@ -11,6 +11,8 @@ export interface Task {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  notionPageId?: string;
+  notionBlockId?: string;
 }
 
 export interface CalendarEvent {
@@ -20,6 +22,7 @@ export interface CalendarEvent {
   endAt: string;
   source?: 'notion' | 'microsoft';
   isAllDay?: boolean;
+  isMeeting?: boolean;
   isCanceled: boolean;
   responseStatus: 'accepted' | 'tentative' | 'declined' | 'none';
 }
@@ -55,8 +58,10 @@ export interface DoitAPI {
     priority: Priority;
     plannedDate: string;
     reminderAt: string | null;
+    notionPageId?: string | null;
   }): Promise<Task>;
   toggleTask(id: string): Promise<Task>;
+  setTaskPriority(id: string, priority: Priority): Promise<Task>;
   updateSettings(patch: Partial<Settings>): Promise<Settings>;
   setExpanded(expanded: boolean): Promise<void>;
   resetWindowPosition(): Promise<void>;
