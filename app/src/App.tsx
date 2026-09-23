@@ -207,11 +207,11 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
       <p className="settings-note">위젯의 빈 공간이나 상단 헤더를 드래그해 원하는 곳으로 옮길 수 있어요.</p>
       <h3>연동 및 동기화 관리</h3>
       <div className="connection"><span><strong>Notion 회의록 DB</strong><small>{state.sync.notion === 'synced' ? '연결됨 · 회의 일정 표시' : state.sync.notion === 'error' ? '동기화 오류' : '연결 안 됨'}</small></span></div>
-      <p className="settings-note">지정한 회의록 DB의 Name·날짜 속성을 읽어요. Notion에서 이 DB를 통합에 공유해주세요.</p>
-      <div className="connection-form"><input type="password" value={notionToken} onChange={(event) => setNotionToken(event.target.value)} placeholder="Notion 내부 통합 토큰" aria-label="Notion 내부 통합 토큰" /><button onClick={() => void connectNotion()} disabled={busy !== null || !notionToken.trim()}>연결</button></div>
+      <p className="settings-note">회의록 DB의 Name·날짜 속성을 읽어요. 개인 액세스 토큰을 만들거나, 내부 통합을 만든 뒤 이 DB를 공유해주세요. <button className="help-link" onClick={() => void window.doit.openHelp('notion')}>토큰 발급 방법 ↗</button></p>
+      <div className="connection-form"><input type="password" value={notionToken} onChange={(event) => setNotionToken(event.target.value)} placeholder="Notion 액세스 토큰" aria-label="Notion 액세스 토큰" /><button onClick={() => void connectNotion()} disabled={busy !== null || !notionToken.trim()}>연결</button></div>
       {state.sync.notionError ? <p className="connection-error">{state.sync.notionError}</p> : null}
       <div className="connection"><span><strong>Microsoft Teams 캘린더</strong><small>{state.sync.microsoft === 'synced' ? '연결됨 · 계정 일정 표시' : state.sync.microsoft === 'error' ? '동기화 오류' : '연결 안 됨'}</small></span></div>
-      <p className="settings-note">Teams와 같은 Microsoft 계정의 캘린더를 읽어요. Entra 앱 등록에서 공개 클라이언트 흐름과 Calendars.Read 권한이 필요해요.</p>
+      <p className="settings-note">Teams와 같은 Microsoft 계정의 캘린더를 읽어요. Entra 앱 등록에서 공개 클라이언트 흐름과 Calendars.Read 권한이 필요해요. <button className="help-link" onClick={() => void window.doit.openHelp('microsoft')}>앱 등록 방법 ↗</button></p>
       <div className="connection-form"><input value={microsoftClientId} onChange={(event) => setMicrosoftClientId(event.target.value)} placeholder="앱 클라이언트 ID" aria-label="Microsoft 앱 클라이언트 ID" /><button onClick={() => void connectMicrosoft()} disabled={busy !== null || !microsoftClientId.trim()}>로그인</button></div>
       {deviceCode ? <p className="device-code">열린 Microsoft 로그인 창에서 코드 <strong>{deviceCode}</strong>를 입력해주세요.</p> : null}
       {state.sync.microsoftError ? <p className="connection-error">{state.sync.microsoftError}</p> : null}

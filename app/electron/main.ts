@@ -219,6 +219,14 @@ ipcMain.handle('sync:refresh', async () => {
   await Promise.allSettled([refreshNotion(), refreshMicrosoft()]);
   return state;
 });
+ipcMain.handle('help:open', (_event, service: 'notion' | 'microsoft') => {
+  const urls = {
+    notion: 'https://developers.notion.com/guides/get-started/quick-start',
+    microsoft: 'https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app',
+  };
+  if (!Object.hasOwn(urls, service)) throw new Error('지원하지 않는 도움말입니다.');
+  return shell.openExternal(urls[service]);
+});
 
 ipcMain.handle('state:get', () => state);
 ipcMain.handle('task:create', async (_event, input: {

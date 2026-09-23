@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('doit', {
   connectNotion: (token: string): Promise<number> => ipcRenderer.invoke('notion:connect', token),
   connectMicrosoft: (clientId: string): Promise<{ userCode: string; verificationUri: string }> => ipcRenderer.invoke('microsoft:connect', clientId),
   refreshSync: (): Promise<AppState> => ipcRenderer.invoke('sync:refresh'),
+  openHelp: (service: 'notion' | 'microsoft'): Promise<void> => ipcRenderer.invoke('help:open', service),
   onStateChanged: (callback: (state: AppState) => void) => {
     const handler = (_event: unknown, state: AppState) => callback(state);
     ipcRenderer.on('state:changed', handler);

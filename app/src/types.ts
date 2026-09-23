@@ -63,6 +63,7 @@ export interface DoitAPI {
   connectNotion(token: string): Promise<number>;
   connectMicrosoft(clientId: string): Promise<{ userCode: string; verificationUri: string }>;
   refreshSync(): Promise<AppState>;
+  openHelp(service: 'notion' | 'microsoft'): Promise<void>;
   onStateChanged(callback: (state: AppState) => void): () => void;
 }
 

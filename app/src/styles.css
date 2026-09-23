@@ -151,6 +151,7 @@ button { cursor: pointer; }
 .connection-form button:disabled, .position-reset:disabled { cursor: default; opacity: .5; }
 .connection-error { margin: 6px 0; color: #b91c1c; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .device-code { padding: 10px; margin: 7px 0; color: #1d4ed8; background: #eff6ff; border-radius: 8px; font-size: 12px; }
+.help-link { padding: 0; color: var(--blue); background: transparent; border: 0; font-size: inherit; }
 .sync { display: flex; justify-content: space-between; padding: 12px; margin-top: 12px; color: var(--muted); background: var(--soft); border-radius: 10px; font-size: 11px; }
 .sync strong { color: #191f28; font-weight: 500; }
 
