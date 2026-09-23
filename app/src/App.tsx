@@ -68,8 +68,11 @@ function meetingNotice(events: CalendarEvent[], now: Date) {
 
 function formatTimeRange(event: CalendarEvent) {
   if (event.isAllDay) return '종일';
-  const formatter = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${formatter.format(new Date(event.startAt))}–${formatter.format(new Date(event.endAt))}`;
+  const format = (value: string) => {
+    const date = new Date(value);
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  };
+  return `${format(event.startAt)} - ${format(event.endAt)}`;
 }
 
 function formatReminder(value: string) {
