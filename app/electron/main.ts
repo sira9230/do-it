@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const WINDOW_WIDTH = 316;
 const EXPANDED_WIDTH = 432;
 const COLLAPSED_HEIGHT = 64;
-const PREVIEW_HEIGHT = 154;
+const PREVIEW_HEIGHT = 124;
 const EXPANDED_HEIGHT = 620;
 const TOP_MARGIN = 16;
 
@@ -412,7 +412,7 @@ ipcMain.handle('window:preview-hover', (_event, hovered: boolean, count: number)
   if (bounds.height > PREVIEW_HEIGHT) return;
   const area = screen.getDisplayMatching(bounds).workArea;
   const cards = Number.isInteger(count) ? Math.max(1, Math.min(3, count)) : 1;
-  const preferredHeight = COLLAPSED_HEIGHT + (cards - 1) * 43 + 4;
+  const preferredHeight = [COLLAPSED_HEIGHT, 94, PREVIEW_HEIGHT][cards - 1];
   const height = hovered ? Math.max(COLLAPSED_HEIGHT, Math.min(preferredHeight, area.y + area.height - bounds.y - 45)) : COLLAPSED_HEIGHT;
   if (bounds.height === height) return;
   widgetWindow.setResizable(true);
