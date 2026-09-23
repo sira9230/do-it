@@ -6,10 +6,10 @@ import { appendNotionTodo, deleteNotionTodo, fetchMicrosoftEvents, fetchNotionDa
 import type { AppState, CalendarEvent, Priority, Settings, Task } from './types.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const WINDOW_WIDTH = 360;
-const EXPANDED_WIDTH = 480;
-const COLLAPSED_HEIGHT = 76;
-const PREVIEW_HEIGHT = 204;
+const WINDOW_WIDTH = 316;
+const EXPANDED_WIDTH = 432;
+const COLLAPSED_HEIGHT = 64;
+const PREVIEW_HEIGHT = 154;
 const EXPANDED_HEIGHT = 620;
 const TOP_MARGIN = 16;
 
@@ -19,6 +19,7 @@ let hoverRequestVersion = 0;
 let windowExpanded = false;
 let resizingWindow = false;
 let resizeVersion = 0;
+let expansionOrigin: { collapsedX: number; collapsedY: number; expandedX: number; expandedY: number } | null = null;
 let tray: Tray | null = null;
 let state: AppState;
 let quitting = false;
@@ -109,11 +110,16 @@ function rescheduleAllReminders() {
 
 async function createWindow() {
   const area = screen.getPrimaryDisplay().workArea;
-  const initialPosition = visiblePosition(state.settings.windowPosition ?? centeredPosition());
+  const savedPosition = state.settings.windowPosition;
+  const oldCenteredX = Math.round(area.x + (area.width - 360) / 2);
+  const preferredPosition = savedPosition && Math.abs(savedPosition.x - oldCenteredX) <= 4
+    ? { ...savedPosition, x: centeredPosition().x }
+    : savedPosition ?? centeredPosition();
+  const initialPosition = visiblePosition(preferredPosition);
   widgetWindow = new BrowserWindow({
     width: WINDOW_WIDTH,
     height: COLLAPSED_HEIGHT,
-    minWidth: 320,
+    minWidth: 280,
     maxWidth: EXPANDED_WIDTH,
     minHeight: COLLAPSED_HEIGHT,
     maxHeight: Math.min(EXPANDED_HEIGHT, area.height),
@@ -147,8 +153,10 @@ async function createWindow() {
     if (positionSaveTimer) clearTimeout(positionSaveTimer);
     positionSaveTimer = setTimeout(() => {
       if (!widgetWindow) return;
-      const { x, y, width } = widgetWindow.getBounds();
-      state.settings.windowPosition = visiblePosition({ x: Math.round(x + (width - WINDOW_WIDTH) / 2), y });
+      const { x, y } = widgetWindow.getBounds();
+      state.settings.windowPosition = visiblePosition(windowExpanded && expansionOrigin
+        ? { x: expansionOrigin.collapsedX + x - expansionOrigin.expandedX, y: expansionOrigin.collapsedY + y - expansionOrigin.expandedY }
+        : { x, y });
       void save(state);
     }, 250);
   });
@@ -179,8 +187,10 @@ function resetWindowPosition() {
   const next = centeredPosition();
   state.settings.windowPosition = next;
   if (widgetWindow) {
-    const width = widgetWindow.getBounds().width;
-    widgetWindow.setPosition(Math.round(next.x - (width - WINDOW_WIDTH) / 2), next.y, true);
+    const bounds = widgetWindow.getBounds();
+    const x = windowExpanded && expansionOrigin ? expansionOrigin.expandedX + next.x - expansionOrigin.collapsedX : next.x;
+    const y = windowExpanded && expansionOrigin ? expansionOrigin.expandedY + next.y - expansionOrigin.collapsedY : next.y;
+    widgetWindow.setPosition(x, y, true);
   }
   void persist();
 }
@@ -402,7 +412,7 @@ ipcMain.handle('window:preview-hover', (_event, hovered: boolean, count: number)
   if (bounds.height > PREVIEW_HEIGHT) return;
   const area = screen.getDisplayMatching(bounds).workArea;
   const cards = Number.isInteger(count) ? Math.max(1, Math.min(3, count)) : 1;
-  const preferredHeight = COLLAPSED_HEIGHT + (cards - 1) * 62 + 4;
+  const preferredHeight = COLLAPSED_HEIGHT + (cards - 1) * 43 + 4;
   const height = hovered ? Math.max(COLLAPSED_HEIGHT, Math.min(preferredHeight, area.y + area.height - bounds.y - 45)) : COLLAPSED_HEIGHT;
   if (bounds.height === height) return;
   widgetWindow.setResizable(true);
@@ -421,13 +431,25 @@ ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
 });
 ipcMain.handle('window:expand', (_event, expanded: boolean) => {
   if (!widgetWindow) return;
-  windowExpanded = expanded;
   if (expanded) hoverWindow?.hide();
   const bounds = widgetWindow.getBounds();
   const area = screen.getDisplayMatching(bounds).workArea;
   const width = expanded ? Math.min(EXPANDED_WIDTH, area.width - 24) : WINDOW_WIDTH;
-  const height = expanded ? Math.min(EXPANDED_HEIGHT, area.y + area.height - bounds.y - 16) : COLLAPSED_HEIGHT;
-  const x = Math.min(Math.max(Math.round(bounds.x + (bounds.width - width) / 2), area.x), area.x + area.width - width);
+  const height = expanded ? Math.min(EXPANDED_HEIGHT, area.height - 16) : COLLAPSED_HEIGHT;
+  let x: number;
+  let y: number;
+  if (expanded) {
+    x = Math.min(Math.max(Math.round(bounds.x + (bounds.width - width) / 2), area.x), area.x + area.width - width);
+    y = Math.min(Math.max(Math.round(bounds.y + (COLLAPSED_HEIGHT - height) / 2), area.y), area.y + area.height - height);
+    expansionOrigin = { collapsedX: bounds.x, collapsedY: bounds.y, expandedX: x, expandedY: y };
+  } else if (expansionOrigin) {
+    x = Math.min(Math.max(expansionOrigin.collapsedX + bounds.x - expansionOrigin.expandedX, area.x), area.x + area.width - width);
+    y = Math.min(Math.max(expansionOrigin.collapsedY + bounds.y - expansionOrigin.expandedY, area.y), area.y + area.height - height);
+  } else {
+    x = Math.round(bounds.x + (bounds.width - width) / 2);
+    y = bounds.y;
+  }
+  windowExpanded = expanded;
   resizingWindow = true;
   const version = ++resizeVersion;
   if (positionSaveTimer) clearTimeout(positionSaveTimer);
@@ -435,6 +457,11 @@ ipcMain.handle('window:expand', (_event, expanded: boolean) => {
   widgetWindow.setBounds({ x, y: bounds.y, width, height }, true);
   widgetWindow.setResizable(false);
   setTimeout(() => { if (version === resizeVersion) resizingWindow = false; }, 750);
+  if (!expanded) {
+    state.settings.windowPosition = visiblePosition({ x, y });
+    void save(state);
+    expansionOrigin = null;
+  }
   positionHoverWindow();
 });
 ipcMain.handle('window:quit', () => { quitting = true; app.quit(); });

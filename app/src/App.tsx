@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { AppState, CalendarEvent, Priority, Task } from './types';
 
 const priorityMeta: Record<Priority, { label: string; meaning: string }> = {
-  P1: { label: '개중요', meaning: '높음' },
+  P1: { label: '중요', meaning: '높음' },
   P2: { label: '보통', meaning: '기본' },
   P3: { label: '천처니', meaning: '낮음' },
 };
@@ -39,12 +39,6 @@ const emptyState: AppState = {
 
 function localDate(date = new Date()) {
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
-}
-
-function localDateTimeInput(date: Date) {
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${localDate(date)}T${hours}:${minutes}`;
 }
 
 function meetingNotice(events: CalendarEvent[], now: Date) {
@@ -195,6 +189,19 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
   const [error, setError] = useState('');
   const [notionPageId, setNotionPageId] = useState<string | null>(null);
 
+  function parsedReminder(): string | null {
+    if (!reminder.trim()) return null;
+    const match = /^(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})$/.exec(reminder.trim());
+    if (!match) throw new Error('리마인드를 YYYY.MM.DD 00:00 형식으로 입력해주세요.');
+    const [, year, month, day, hour, minute] = match;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+    if (date.getFullYear() !== Number(year) || date.getMonth() + 1 !== Number(month) || date.getDate() !== Number(day)
+      || date.getHours() !== Number(hour) || date.getMinutes() !== Number(minute) || date.getTime() <= Date.now()) {
+      throw new Error('현재보다 뒤의 올바른 날짜와 시간을 입력해주세요.');
+    }
+    return date.toISOString();
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!title.trim()) {
@@ -207,7 +214,7 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
         summary,
         priority,
         plannedDate: localDate(),
-        reminderAt: reminder ? new Date(reminder).toISOString() : null,
+        reminderAt: parsedReminder(),
         notionPageId,
       });
       onClose();
@@ -241,7 +248,7 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
       </fieldset> : null}
       <Label>
         리마인드 <span className="optional">선택</span>
-        <Input type="datetime-local" min={localDateTimeInput(new Date(Date.now() + 60_000))} value={reminder} onChange={(event) => setReminder(event.target.value)} />
+        <Input type="text" inputMode="numeric" placeholder="YYYY.MM.DD 00:00" value={reminder} onChange={(event) => setReminder(event.target.value)} aria-label="리마인드 날짜와 시간" />
       </Label>
       <p className="form-help">설정한 시간에 macOS 알림으로 알려드려요.</p>
       {error ? <p className="error" role="alert">{error}</p> : null}
@@ -408,11 +415,11 @@ export function App() {
 
   return <MotionConfig reducedMotion="user">
     <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
+      <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3.5" /></button>
       {!expanded ? (
-        <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 29 }}>
-          <button type="button" className="widget-close collapsed-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3.5" /></button>
+        <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }}>
           <AnimatePresence initial={false}>
-            {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .9, opacity: 0, filter: 'blur(3px)' }} animate={{ y: index * 62, scale: 1 - index * .045, opacity: 1 - index * .17, filter: 'blur(0px)' }} exit={{ y: -48, scale: .92, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 470, damping: 29, delay: index * .055 }} style={{ zIndex: 3 - index }} onClick={() => open()} aria-label={`${task.title} · 할 일 목록 열기`}>
+            {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: index * 43, scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onClick={() => open()} aria-label={`${task.title} · 할 일 목록 열기`}>
               {index === 0 ? <Bosongi /> : null}
               <div className="preview-content">
                 {index === 0 && meeting ? <div className="preview-meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
@@ -424,9 +431,9 @@ export function App() {
           {!remaining.length ? <button className="preview-card current preview-empty interactive" onClick={() => open('add')}><Bosongi /><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
         </motion.div>
       ) : (
-        <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .965, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ type: 'spring', stiffness: 280, damping: 30 }}>
+        <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 24, mass: .9 }}>
           <header>
-            <div className="header-leading"><button type="button" className="widget-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3.5" /></button><Button variant="ghost" className="brand interactive" onClick={collapse}><Bosongi /><span>Do it</span></Button></div>
+            <div className="header-leading"><Button variant="ghost" className="brand interactive" onClick={collapse}><Bosongi /><span>Do it</span></Button></div>
             <div><div className="window-grip" title="위젯 위치 이동" aria-label="위젯 위치 이동"><GripHorizontal className="size-4" /></div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => setPage('settings')}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
           </header>
           {page === 'add' ? <AddTask onClose={() => setPage('home')} notionPages={todayNotionPages} /> : page === 'edit' && editingTask ? <EditTask key={editingTask.id} task={editingTask} onClose={() => setPage('home')} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
