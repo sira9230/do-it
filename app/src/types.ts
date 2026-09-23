@@ -67,6 +67,7 @@ export interface DoitAPI {
   deleteTask(id: string): Promise<void>;
   restoreTask(task: Task): Promise<void>;
   showHoverCount(count: number | null): Promise<void>;
+  setPreviewHovered(hovered: boolean, count: number): Promise<void>;
   updateSettings(patch: Partial<Settings>): Promise<Settings>;
   setExpanded(expanded: boolean): Promise<void>;
   resetWindowPosition(): Promise<void>;

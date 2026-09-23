@@ -7,7 +7,8 @@ import type { AppState, CalendarEvent, Priority, Settings, Task } from './types.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WINDOW_WIDTH = 360;
-const COLLAPSED_HEIGHT = 128;
+const COLLAPSED_HEIGHT = 76;
+const PREVIEW_HEIGHT = 204;
 const EXPANDED_HEIGHT = 560;
 const TOP_MARGIN = 16;
 
@@ -56,7 +57,7 @@ async function createHoverWindow() {
   });
   hoverWindow.setIgnoreMouseEvents(true);
   hoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;font-family:-apple-system,BlinkMacSystemFont,sans-serif}body{display:grid;place-items:center;height:39px}.pill{padding:7px 13px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#6b7280;font-size:12px;box-shadow:0 8px 30px rgba(0,0,0,.045);white-space:nowrap}.pill b{color:#3977eb;font-weight:650}</style></head><body><div class="pill">남은 할 일 <b id="count">0개</b></div></body></html>';
+  const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;font-family:-apple-system,BlinkMacSystemFont,sans-serif}body{display:grid;place-items:center;height:39px}.pill{display:flex;align-items:center;gap:9px;padding:8px 14px;border-radius:999px;background:#fff;color:#747b86;font-size:12px;letter-spacing:.01em;box-shadow:0 9px 33px rgba(0,0,0,.065);white-space:nowrap}.pill b{color:#3674e9;font-size:13px;font-weight:700}</style></head><body><div class="pill">남은 할 일 <b id="count">0개</b></div></body></html>';
   await hoverWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
@@ -378,7 +379,7 @@ ipcMain.handle('task:restore', async (_event, task: Task) => {
 });
 ipcMain.handle('widget:hover-count', async (_event, count: number | null) => {
   const version = ++hoverRequestVersion;
-  if (!hoverWindow || !widgetWindow || count === null || !Number.isInteger(count) || count < 0 || !widgetWindow.isVisible() || widgetWindow.getBounds().height !== COLLAPSED_HEIGHT) {
+  if (!hoverWindow || !widgetWindow || count === null || !Number.isInteger(count) || count < 0 || !widgetWindow.isVisible() || widgetWindow.getBounds().height > PREVIEW_HEIGHT) {
     hoverWindow?.hide();
     return;
   }
@@ -386,6 +387,20 @@ ipcMain.handle('widget:hover-count', async (_event, count: number | null) => {
   if (version !== hoverRequestVersion) return;
   positionHoverWindow();
   hoverWindow.showInactive();
+});
+ipcMain.handle('window:preview-hover', (_event, hovered: boolean, count: number) => {
+  if (!widgetWindow) return;
+  const bounds = widgetWindow.getBounds();
+  if (bounds.height > PREVIEW_HEIGHT) return;
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const cards = Number.isInteger(count) ? Math.max(1, Math.min(3, count)) : 1;
+  const preferredHeight = COLLAPSED_HEIGHT + (cards - 1) * 62 + 4;
+  const height = hovered ? Math.max(COLLAPSED_HEIGHT, Math.min(preferredHeight, area.y + area.height - bounds.y - 45)) : COLLAPSED_HEIGHT;
+  if (bounds.height === height) return;
+  widgetWindow.setResizable(true);
+  widgetWindow.setBounds({ ...bounds, height }, true);
+  widgetWindow.setResizable(false);
+  positionHoverWindow();
 });
 ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
   state.settings = { ...state.settings, ...patch };

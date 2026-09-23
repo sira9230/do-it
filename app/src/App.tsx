@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, MotionConfig, type PanInfo } from 'motion/react';
-import { ArrowLeft, ChevronDown, ChevronUp, Clock3, ExternalLink, Pencil, Plus, Settings2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Clock3, ExternalLink, Pencil, Plus, Settings2, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox';
@@ -121,14 +122,15 @@ function PrioritySelector({ task, onChange }: { task: Task; onChange: (id: strin
 }
 
 function TaskRow({ task, onToggle, onPriority, onEdit, onDelete }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void }) {
-  const [draggingAway, setDraggingAway] = useState(false);
+  const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
-    const droppedOutside = info.point.x < 0 || info.point.x > window.innerWidth;
-    if (onDelete && droppedOutside && Math.abs(info.offset.x) > 72) onDelete(task.id);
-    setDraggingAway(false);
+    if (onDelete && Math.hypot(info.offset.x, info.offset.y) > 115) onDelete(task.id);
+    setDragPoint(null);
   }
   return (
-    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 390, damping: 34 }} drag={onDelete ? 'x' : false} dragSnapToOrigin dragMomentum={false} onDrag={(_event, info) => setDraggingAway(info.point.x < 0 || info.point.x > window.innerWidth)} onDragEnd={finishDrag} whileDrag={{ scale: 1.035, rotate: 1.5, zIndex: 10 }} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${draggingAway ? 'dragging-away' : ''}`}>
+    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 390, damping: 34 }} className="task-slot">
+      {dragPoint ? <div className="delete-placeholder"><Trash2 className="size-4" /><span>놓으면 삭제</span></div> : null}
+      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onDragStart={(_event, info) => setDragPoint(info.point)} onDrag={(_event, info) => setDragPoint(info.point)} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint ? 'dragging-source' : ''}`}>
       <TaskCheckbox task={task} onToggle={onToggle} />
       <div>
         <div className="title-line">
@@ -147,6 +149,8 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete }: { task: Task;
           ? <span className="reminder-badge"><Clock3 className="size-3" /> {formatReminder(task.reminderAt)} 리마인드</span>
           : null}
       </div>
+      </motion.div>
+      {dragPoint ? createPortal(<div className="drag-ghost" style={{ left: dragPoint.x - Math.min(320, window.innerWidth - 40) / 2, top: dragPoint.y - 30, width: Math.min(320, window.innerWidth - 40) }}><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></div>, document.body) : null}
     </motion.div>
   );
 }
@@ -337,8 +341,9 @@ export function App() {
   const editingTask = state.tasks.find((task) => task.id === editingTaskId) ?? null;
 
   useEffect(() => {
+    void window.doit.setPreviewHovered(hovered && !expanded, remaining.length);
     void window.doit.showHoverCount(hovered && !expanded ? remaining.length : null);
-    return () => { void window.doit.showHoverCount(null); };
+    return () => { void window.doit.setPreviewHovered(false, 0); void window.doit.showHoverCount(null); };
   }, [hovered, expanded, remaining.length]);
 
   useEffect(() => {
@@ -393,20 +398,20 @@ export function App() {
   if (!loaded) return <main className="shell loading"><Bosongi /><span>두잇 준비 중…</span></main>;
 
   return <MotionConfig reducedMotion="user">
-    <main className={`shell ${expanded ? 'expanded' : 'collapsed'}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       {!expanded ? (
         <div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요">
-          <Button variant="ghost" className="open-character interactive" aria-label="할 일 펼치기" onClick={() => open()}><Bosongi /></Button>
-          <div className="preview-stack interactive" onClick={() => open()} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') open(); }} aria-label="할 일 목록 열기">
-            <AnimatePresence initial={false}>
-              {remaining.slice(0, 2).map((task, index) => <motion.div key={task.id} className={`preview-card ${index === 0 ? 'current' : 'next'}`} initial={{ y: 72, scale: .91, opacity: 0, filter: 'blur(2px)' }} animate={{ y: index === 0 ? 0 : 48, scale: index === 0 ? 1 : .93, opacity: index === 0 ? 1 : .52, filter: index === 0 ? 'blur(0px)' : 'blur(.7px)' }} exit={{ y: -54, scale: .94, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 340, damping: 32 }} style={{ zIndex: index === 0 ? 2 : 1 }}>
+          <AnimatePresence initial={false}>
+            {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .9, opacity: 0, filter: 'blur(3px)' }} animate={{ y: index * 62, scale: 1 - index * .045, opacity: 1 - index * .17, filter: 'blur(0px)' }} exit={{ y: -48, scale: .92, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 470, damping: 29, delay: index * .055 }} style={{ zIndex: 3 - index }} onClick={() => open()} aria-label={`${task.title} · 할 일 목록 열기`}>
+              {index === 0 ? <Bosongi /> : null}
+              <div className="preview-content">
                 {index === 0 && meeting ? <div className="preview-meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
                 <div className="preview-task"><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{state.settings.privacyMode ? '할 일' : task.title}</strong></div>
-              </motion.div>)}
-            </AnimatePresence>
-            {!remaining.length ? <span className="preview-empty">오늘 할 일을 추가해볼까요?</span> : null}
-          </div>
-          <Button variant="ghost" size="icon" className="icon interactive" aria-label="전체 할 일 보기" onClick={() => open()}><Chevron /></Button>
+              </div>
+              {index === 0 ? <Chevron /> : null}
+            </motion.button>)}
+          </AnimatePresence>
+          {!remaining.length ? <button className="preview-card current preview-empty interactive" onClick={() => open('add')}><Bosongi /><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
         </div>
       ) : (
         <div className="expanded-inner">
@@ -418,7 +423,7 @@ export function App() {
             <section className="page home">
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
-              <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="text" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
+              <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="add-trigger" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
               <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />)}</AnimatePresence></div>
               {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
               {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('doit', {
   deleteTask: (id: string): Promise<void> => ipcRenderer.invoke('task:delete', id),
   restoreTask: (task: Task): Promise<void> => ipcRenderer.invoke('task:restore', task),
   showHoverCount: (count: number | null): Promise<void> => ipcRenderer.invoke('widget:hover-count', count),
+  setPreviewHovered: (hovered: boolean, count: number): Promise<void> => ipcRenderer.invoke('window:preview-hover', hovered, count),
   updateSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:update', patch),
   setExpanded: (expanded: boolean): Promise<void> => ipcRenderer.invoke('window:expand', expanded),
   resetWindowPosition: (): Promise<void> => ipcRenderer.invoke('window:reset-position'),
