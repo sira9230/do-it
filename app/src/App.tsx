@@ -134,6 +134,7 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragFinish }:
           <strong>{task.title}</strong>
           <Button variant="ghost" size="icon-xs" className="edit-task" aria-label={`${task.title} 수정`} onClick={() => onEdit(task.id)}><Pencil className="size-3.5" /></Button>
         </div>
+        {task.notionBlockId && (task.status === 'done' || task.notionStatus === '진행중') ? <span className={`notion-status ${task.status === 'done' ? 'done' : 'in-progress'}`}>{task.status === 'done' ? '완료' : '진행중'}</span> : null}
         {task.summary ? <p>{task.summary}</p> : null}
         {task.notionPageId ? <div className="task-source">
           <span>{task.sourcePageTitle ?? 'Notion 회의록'}</span>

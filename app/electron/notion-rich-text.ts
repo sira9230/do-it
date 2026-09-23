@@ -9,17 +9,28 @@ export interface NotionRichText {
 }
 
 export function isPriorityCode(part: NotionRichText) {
-  return part.annotations?.code === true && !!part.text && /^P[123]$/i.test((part.plain_text ?? part.text.content).trim());
+  return part.annotations?.code === true && !!part.text && /^(P[123]|추후 진행)$/i.test((part.plain_text ?? part.text.content).trim());
+}
+
+export function isTaskStatusCode(part: NotionRichText) {
+  return part.annotations?.code === true && !!part.text && /^(진행중|완료)$/.test((part.plain_text ?? part.text.content).trim());
 }
 
 export function visibleText(parts: NotionRichText[]) {
-  return parts.filter((part) => !isPriorityCode(part))
+  return parts.filter((part) => !isPriorityCode(part) && !isTaskStatusCode(part))
     .map((part) => part.plain_text ?? part.text?.content ?? '').join('').replace(/\s{2,}/g, ' ').trim();
 }
 
 export function inlinePriority(parts: NotionRichText[]): Priority | null {
   const code = parts.find(isPriorityCode);
-  return code ? (code.plain_text ?? code.text?.content ?? '').trim().toUpperCase() as Priority : null;
+  if (!code) return null;
+  const value = (code.plain_text ?? code.text?.content ?? '').trim().toUpperCase();
+  return value === '추후 진행' ? 'P3' : value === 'P1' || value === 'P2' ? value : null;
+}
+
+export function inlineTaskStatus(parts: NotionRichText[]): '진행중' | '완료' | null {
+  const code = parts.find(isTaskStatusCode);
+  return code ? (code.plain_text ?? code.text?.content ?? '').trim() as '진행중' | '완료' : null;
 }
 
 export function writableRichText(part: NotionRichText): NotionRichText {
@@ -33,8 +44,8 @@ function fragment(part: NotionRichText, content: string): NotionRichText {
 }
 
 export function replaceVisibleTitle(parts: NotionRichText[], nextTitle: string): NotionRichText[] {
-  const visible = parts.filter((part) => !isPriorityCode(part));
-  const codes = parts.filter(isPriorityCode).map(writableRichText);
+  const visible = parts.filter((part) => !isPriorityCode(part) && !isTaskStatusCode(part));
+  const codes = parts.filter((part) => isPriorityCode(part) || isTaskStatusCode(part)).map(writableRichText);
   const oldTitle = visible.map((part) => part.plain_text ?? part.text?.content ?? '').join('').trimEnd();
   let prefix = 0;
   while (prefix < oldTitle.length && prefix < nextTitle.length && oldTitle[prefix] === nextTitle[prefix]) prefix++;

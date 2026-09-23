@@ -15,6 +15,7 @@ export interface Task {
   notionPageId?: string;
   notionBlockId?: string;
   sourcePageTitle?: string;
+  notionStatus?: '진행중' | '완료';
 }
 
 export interface CalendarEvent {

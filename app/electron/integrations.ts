@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CalendarEvent, Priority, Task } from './types.js';
-import { inlinePriority, isPriorityCode, replaceVisibleTitle, visibleText, writableRichText } from './notion-rich-text.js';
+import { inlinePriority, inlineTaskStatus, isPriorityCode, replaceVisibleTitle, visibleText, writableRichText } from './notion-rich-text.js';
 import type { NotionRichText } from './notion-rich-text.js';
 
 const NOTION_DATA_SOURCE = '159563d4-3059-8187-9a21-000b9c31881e';
@@ -100,7 +100,6 @@ function dateString(value: string) {
 
 function notionPriority(value?: string): Priority {
   if (value === 'red_background' || value === 'red') return 'P1';
-  if (value === 'gray_background' || value === 'gray') return 'P3';
   return 'P2';
 }
 
@@ -228,6 +227,7 @@ export async function fetchNotionData(token: string): Promise<{ events: Calendar
             summary: description,
             priority: blockPriority(block),
             status: block.to_do?.checked ? 'done' : 'todo',
+            notionStatus: inlineTaskStatus(block.to_do?.rich_text ?? []) ?? undefined,
             plannedDate: dateString(date.start),
             reminderAt: null,
             completedAt: block.to_do?.checked ? updatedAt : null,
@@ -268,12 +268,12 @@ export async function updateNotionTodoPriority(token: string, blockId: string, p
   if (current.type !== 'to_do' || !current.to_do) throw new Error('Notion 체크박스를 찾을 수 없습니다.');
   const richText = current.to_do.rich_text.map((part) => {
     const writable = writableRichText(part);
-    if (isPriorityCode(part) && writable.text) return { ...writable, text: { ...writable.text, content: writable.text.content.replace(/P[123]/i, priority) } };
+    if (isPriorityCode(part) && writable.text) return { ...writable, text: { ...writable.text, content: writable.text.content.replace(/P[123]|추후 진행/i, priority === 'P3' ? '추후 진행' : priority) } };
     return writable;
   });
   if (!current.to_do.rich_text.some(isPriorityCode)) {
     richText.push({ type: 'text', text: { content: ' ' } });
-    richText.push({ type: 'text', text: { content: priority }, annotations: { code: true } });
+    richText.push({ type: 'text', text: { content: priority === 'P3' ? '추후 진행' : priority }, annotations: { code: true } });
   }
   await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
     method: 'PATCH',
@@ -308,7 +308,7 @@ export async function appendNotionTodo(token: string, pageId: string, title: str
             rich_text: [
               { type: 'text', text: { content: title } },
               { type: 'text', text: { content: ' ' } },
-              { type: 'text', text: { content: priority }, annotations: { code: true } },
+              { type: 'text', text: { content: priority === 'P3' ? '추후 진행' : priority }, annotations: { code: true } },
             ],
             checked: false,
             color,
