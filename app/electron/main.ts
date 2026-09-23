@@ -9,7 +9,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const WINDOW_WIDTH = 316;
 const EXPANDED_WIDTH = 432;
 const COLLAPSED_HEIGHT = 64;
-const PREVIEW_HEIGHT = 124;
+const PREVIEW_HEIGHT = 114;
+const HOVER_WIDTH = 126;
+const HOVER_HEIGHT = 32;
 const EXPANDED_HEIGHT = 620;
 const TOP_MARGIN = 16;
 
@@ -48,21 +50,21 @@ function positionHoverWindow() {
   if (!widgetWindow || !hoverWindow) return;
   const bounds = widgetWindow.getBounds();
   const area = screen.getDisplayMatching(bounds).workArea;
-  const x = Math.round(bounds.x + (bounds.width - 156) / 2);
-  const y = bounds.y + bounds.height + 3 + 39 <= area.y + area.height
-    ? bounds.y + bounds.height + 3 : bounds.y - 42;
+  const x = Math.round(bounds.x + (bounds.width - HOVER_WIDTH) / 2);
+  const y = bounds.y + bounds.height + 1 + HOVER_HEIGHT <= area.y + area.height
+    ? bounds.y + bounds.height + 1 : bounds.y - HOVER_HEIGHT - 1;
   hoverWindow.setPosition(x, y, false);
 }
 
 async function createHoverWindow() {
   hoverWindow = new BrowserWindow({
-    width: 156, height: 39, frame: false, transparent: true, resizable: false,
+    width: HOVER_WIDTH, height: HOVER_HEIGHT, frame: false, transparent: true, resizable: false,
     focusable: false, skipTaskbar: true, show: false, alwaysOnTop: state.settings.alwaysOnTop,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   hoverWindow.setIgnoreMouseEvents(true);
   hoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;font-family:-apple-system,BlinkMacSystemFont,sans-serif}body{display:grid;place-items:center;height:39px}.pill{display:flex;align-items:center;gap:9px;padding:8px 14px;border-radius:999px;background:#fff;color:#747b86;font-size:12px;letter-spacing:.01em;box-shadow:0 9px 33px rgba(0,0,0,.065);white-space:nowrap}.pill b{color:#3674e9;font-size:13px;font-weight:700}</style></head><body><div class="pill">남은 할 일 <b id="count">0개</b></div></body></html>';
+  const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent;font-family:-apple-system,BlinkMacSystemFont,sans-serif}body{display:grid;place-items:center;height:32px}.pill{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:#fff;color:#747b86;font-size:11px;letter-spacing:.01em;box-shadow:0 6px 20px rgba(0,0,0,.055);white-space:nowrap}.pill b{color:#3674e9;font-size:11px;font-weight:700}</style></head><body><div class="pill">남은 할 일 <b id="count">0개</b></div></body></html>';
   await hoverWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
@@ -146,6 +148,9 @@ async function createWindow() {
       widgetWindow?.hide();
       hoverWindow?.hide();
     }
+  });
+  widgetWindow.on('blur', () => {
+    if (windowExpanded) widgetWindow?.webContents.send('window:outside-click');
   });
   widgetWindow.on('move', () => {
     positionHoverWindow();
@@ -412,8 +417,8 @@ ipcMain.handle('window:preview-hover', (_event, hovered: boolean, count: number)
   if (bounds.height > PREVIEW_HEIGHT) return;
   const area = screen.getDisplayMatching(bounds).workArea;
   const cards = Number.isInteger(count) ? Math.max(1, Math.min(3, count)) : 1;
-  const preferredHeight = [COLLAPSED_HEIGHT, 94, PREVIEW_HEIGHT][cards - 1];
-  const height = hovered ? Math.max(COLLAPSED_HEIGHT, Math.min(preferredHeight, area.y + area.height - bounds.y - 45)) : COLLAPSED_HEIGHT;
+  const preferredHeight = [COLLAPSED_HEIGHT, 86, PREVIEW_HEIGHT][cards - 1];
+  const height = hovered ? Math.max(COLLAPSED_HEIGHT, Math.min(preferredHeight, area.y + area.height - bounds.y - HOVER_HEIGHT - 2)) : COLLAPSED_HEIGHT;
   if (bounds.height === height) return;
   widgetWindow.setResizable(true);
   widgetWindow.setBounds({ ...bounds, height }, true);
@@ -465,6 +470,7 @@ ipcMain.handle('window:expand', (_event, expanded: boolean) => {
   widgetWindow.setResizable(true);
   widgetWindow.setBounds({ x, y: bounds.y, width, height }, true);
   widgetWindow.setResizable(false);
+  if (expanded) widgetWindow.focus();
   setTimeout(() => { if (version === resizeVersion) resizingWindow = false; }, 750);
   if (!expanded) {
     state.settings.windowPosition = visiblePosition({ x, y });

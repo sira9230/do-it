@@ -427,6 +427,11 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [expanded]);
 
+  useEffect(() => {
+    if (!expanded) return;
+    return window.doit.onOutsideClick(() => collapse());
+  }, [expanded]);
+
   const toggle = (id: string) => void window.doit.toggleTask(id);
   const changePriority = (id: string, priority: Priority) => void window.doit.setTaskPriority(id, priority);
   const editTask = (id: string) => { setEditingTaskId(id); setPage('edit'); };

@@ -79,6 +79,7 @@ export interface DoitAPI {
   openHelp(service: 'notion' | 'microsoft'): Promise<void>;
   openNotionPage(pageId: string): Promise<void>;
   onStateChanged(callback: (state: AppState) => void): () => void;
+  onOutsideClick(callback: () => void): () => void;
 }
 
 declare global {

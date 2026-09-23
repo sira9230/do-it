@@ -33,4 +33,9 @@ contextBridge.exposeInMainWorld('doit', {
     ipcRenderer.on('state:changed', handler);
     return () => ipcRenderer.removeListener('state:changed', handler);
   },
+  onOutsideClick: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('window:outside-click', handler);
+    return () => ipcRenderer.removeListener('window:outside-click', handler);
+  },
 });
