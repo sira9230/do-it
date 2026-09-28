@@ -116,7 +116,7 @@ button { cursor: pointer; }
 .preview-card:active { cursor: grabbing; }
 .preview-card.current { box-shadow: 0 15px 55px oklch(0 0 0 / .065); }
 .preview-card.current .bosongi, .preview-empty .bosongi { width: 22px; height: 22px; }
-.preview-card.next { box-shadow: 0 12px 42px oklch(0 0 0 / .04); }
+.preview-card.next { left: 22px; width: calc(100% - 16px); box-shadow: 0 12px 42px oklch(0 0 0 / .04); }
 .preview-card.next .preview-content { padding-left: 4px; }
 .preview-card > svg { flex: 0 0 auto; width: 16px; height: 16px; margin-left: auto; color: var(--muted-foreground); }
 .preview-content { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
