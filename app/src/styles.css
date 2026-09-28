@@ -161,13 +161,13 @@ button { cursor: pointer; }
 
 .list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .task-slot { position: relative; }
-.task-row { min-height: 54px; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 0; border-radius: 16px; background: var(--card); box-shadow: 0 5px 26px oklch(0 0 0 / .055); transition: background-color 150ms ease, box-shadow 150ms ease; cursor: grab; touch-action: none; }
+.task-row { min-height: 54px; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 0; border-radius: 16px; background: var(--card); box-shadow: 0 5px 26px oklch(0 0 0 / .055); transition: background-color 150ms ease, box-shadow 150ms ease, opacity 160ms ease; cursor: grab; touch-action: none; }
 .task-row:hover { background: var(--muted); box-shadow: 0 9px 30px oklch(0 0 0 / .07); }
 .task-row:active { cursor: grabbing; }
 .task-row.dragging-source { opacity: 0 !important; }
 .delete-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; background: color-mix(in oklch, var(--destructive) 8%, white); color: var(--destructive); font-size: 12px; font-weight: 600; }
 .reorder-placeholder { background: var(--accent); color: var(--accent-foreground); }
-.drag-ghost { position: fixed; z-index: 1000; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 16px; background: var(--card); box-shadow: 0 18px 52px oklch(0 0 0 / .16); pointer-events: none; transform: rotate(-3deg) scale(1.025); }
+.drag-ghost { position: fixed; z-index: 1000; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 16px; background: var(--card); box-shadow: 0 18px 52px oklch(0 0 0 / .16); pointer-events: none; }
 .drag-ghost strong { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .task-row > div { min-width: 0; flex: 1; }
 .title-line { min-width: 0; display: flex; align-items: center; gap: 10px; }

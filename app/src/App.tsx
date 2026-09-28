@@ -122,6 +122,7 @@ function PrioritySelector({ task, onChange }: { task: Task; onChange: (id: strin
 function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragStart, onDragMove, onReorder, onDragFinish }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void; onDragStart?: (id: string) => void; onDragMove?: (id: string, pointerY: number, offsetX: number, offsetY: number) => void; onReorder?: (id: string, pointerY: number) => void; onDragFinish?: () => void }) {
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   const [dragIntent, setDragIntent] = useState<'delete' | 'reorder'>('reorder');
+  const [settling, setSettling] = useState(false);
   function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
     onDragFinish?.();
     if (onDelete && Math.abs(info.offset.x) > 115 && Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15) onDelete(task.id);
@@ -129,9 +130,9 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragStart, on
     setDragPoint(null);
   }
   return (
-    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 310, damping: 28 }} className="task-slot" data-task-id={task.id}>
+    <motion.div initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 310, damping: 28 }} className="task-slot" data-task-id={task.id}>
       {dragPoint ? <div className={`delete-placeholder ${dragIntent === 'reorder' ? 'reorder-placeholder' : ''}`}>{dragIntent === 'delete' ? <Trash2 className="size-4" /> : <GripHorizontal className="size-4" />}<span>{dragIntent === 'delete' ? '놓으면 삭제' : '위아래로 옮겨 순서 변경'}</span></div> : null}
-      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onDragStart={(_event, info) => { setDragPoint(info.point); onDragStart?.(task.id); }} onDrag={(_event, info) => { setDragPoint(info.point); setDragIntent(Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15 && Math.abs(info.offset.x) > 24 ? 'delete' : 'reorder'); onDragMove?.(task.id, info.point.y, info.offset.x, info.offset.y); }} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint ? 'dragging-source' : ''}`}>
+      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onDragStart={(_event, info) => { setSettling(true); setDragPoint(info.point); onDragStart?.(task.id); }} onDrag={(_event, info) => { setDragPoint(info.point); setDragIntent(Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15 && Math.abs(info.offset.x) > 24 ? 'delete' : 'reorder'); onDragMove?.(task.id, info.point.y, info.offset.x, info.offset.y); }} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint || settling ? 'dragging-source' : ''}`}>
       <TaskCheckbox task={task} onToggle={onToggle} />
       <div>
         <div className="title-line">
@@ -152,7 +153,7 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragStart, on
           : null}
       </div>
       </motion.div>
-      {dragPoint ? createPortal(<div className="drag-ghost" style={{ left: dragPoint.x - Math.min(320, window.innerWidth - 40) / 2, top: dragPoint.y - 30, width: Math.min(320, window.innerWidth - 40) }}><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></div>, document.body) : null}
+      {createPortal(<AnimatePresence onExitComplete={() => setSettling(false)}>{dragPoint ? <motion.div key="drag-preview" className="drag-ghost" initial={{ scale: 1, opacity: 1 }} animate={{ scale: .96, opacity: 1 }} exit={{ scale: 1, opacity: 0 }} transition={{ duration: .16, ease: 'easeOut' }} style={{ left: dragPoint.x - Math.min(320, window.innerWidth - 40) / 2, top: dragPoint.y - 30, width: Math.min(320, window.innerWidth - 40) }}><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></motion.div> : null}</AnimatePresence>, document.body)}
     </motion.div>
   );
 }

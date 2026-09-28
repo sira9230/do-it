@@ -1,7 +1,8 @@
 import { app } from 'electron';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AppState, Priority, Task } from './types.js';
+import { createSerializedJsonWriter } from './state-file.js';
 
 const defaults: AppState = {
   tasks: [],
@@ -25,6 +26,7 @@ const defaults: AppState = {
 
 const target = () => path.join(app.getPath('userData'), 'doit-state.json');
 const previousTarget = () => path.join(app.getPath('appData'), 'Do it Widget', 'doit-state.json');
+const writeState = createSerializedJsonWriter();
 
 export async function load(): Promise<AppState> {
   try {
@@ -48,12 +50,8 @@ export async function load(): Promise<AppState> {
   }
 }
 
-export async function save(state: AppState) {
-  const file = target();
-  const temporary = `${file}.tmp`;
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(temporary, JSON.stringify(state, null, 2));
-  await rename(temporary, file);
+export function save(state: AppState) {
+  return writeState(target(), state);
 }
 
 export function createTask(input: {
