@@ -26,3 +26,10 @@ test('완료한 앱 할 일을 옮기면 Notion 체크박스도 완료 상태로
   assert.equal(task.to_do.checked, true);
   assert.equal(task.to_do.rich_text[2].text.content, 'P2');
 });
+
+test('진행중으로 추가한 할 일은 Notion에 코드형 상태를 함께 기록한다', () => {
+  const task = notionTodoAppendBody('자료 정리', '', 'P2', false, true).children[0];
+  assert.equal(task.to_do.checked, false);
+  assert.equal(task.to_do.rich_text[4].text.content, '진행중');
+  assert.equal(task.to_do.rich_text[4].annotations.code, true);
+});

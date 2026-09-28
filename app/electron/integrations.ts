@@ -57,6 +57,7 @@ interface NotionBlock {
   id: string;
   type: string;
   has_children?: boolean;
+  created_time?: string;
   last_edited_time?: string;
   to_do?: { checked: boolean; color?: string; rich_text: NotionRichText[] };
   paragraph?: { rich_text: NotionRichText[] };
@@ -234,12 +235,12 @@ export async function fetchNotionData(token: string): Promise<{ events: Calendar
             title,
             summary: childDescriptions.get(block.id) ?? description,
             priority: blockPriority(block),
-            status: block.to_do?.checked ? 'done' : 'todo',
+            status: block.to_do?.checked ? 'done' : inlineTaskStatus(block.to_do?.rich_text ?? []) === '진행중' ? 'in_progress' : 'todo',
             notionStatus: inlineTaskStatus(block.to_do?.rich_text ?? []) ?? undefined,
             plannedDate: dateString(date.start),
             reminderAt: null,
             completedAt: block.to_do?.checked ? updatedAt : null,
-            createdAt: page.created_time ?? updatedAt,
+            createdAt: block.created_time ?? page.created_time ?? updatedAt,
             updatedAt,
           });
         }
@@ -301,13 +302,13 @@ export async function updateNotionTodoTitle(token: string, blockId: string, titl
   });
 }
 
-export async function appendNotionTodo(token: string, pageId: string, title: string, summary: string, priority: Priority, checked = false): Promise<string> {
+export async function appendNotionTodo(token: string, pageId: string, title: string, summary: string, priority: Priority, checked = false, inProgress = false): Promise<string> {
   const result = await responseJson<{ results: { id: string }[] }>(
     `https://api.notion.com/v1/blocks/${pageId}/children`,
     {
       method: 'PATCH',
       headers: { ...notionHeaders(token), 'Notion-Version': '2026-03-11' },
-      body: JSON.stringify(notionTodoAppendBody(title, summary, priority, checked)),
+      body: JSON.stringify(notionTodoAppendBody(title, summary, priority, checked, inProgress)),
     },
   );
   if (!result.results[0]?.id) throw new Error('Notion에서 새 체크박스 ID를 받지 못했습니다.');

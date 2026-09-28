@@ -1,5 +1,5 @@
 export type Priority = 'P1' | 'P2' | 'P3';
-export type Status = 'todo' | 'done';
+export type Status = 'todo' | 'in_progress' | 'done';
 
 export interface Task {
   id: string;
@@ -7,6 +7,7 @@ export interface Task {
   summary: string;
   priority: Priority;
   status: Status;
+  resumeStatus?: 'todo' | 'in_progress';
   plannedDate: string;
   reminderAt: string | null;
   completedAt: string | null;

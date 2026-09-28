@@ -5,7 +5,8 @@ export interface Task {
   title: string;
   summary: string;
   priority: Priority;
-  status: 'todo' | 'done';
+  status: 'todo' | 'in_progress' | 'done';
+  resumeStatus?: 'todo' | 'in_progress';
   plannedDate: string;
   reminderAt: string | null;
   completedAt: string | null;
@@ -59,6 +60,7 @@ export interface DoitAPI {
     title: string;
     summary: string;
     priority: Priority;
+    status: 'todo' | 'in_progress';
     plannedDate: string;
     reminderAt: string | null;
     notionPageId?: string | null;

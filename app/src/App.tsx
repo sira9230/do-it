@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { AppState, CalendarEvent, Priority, Task } from './types';
 import { formatReminderInput, parseReminderInput } from './reminder';
 import { moveTaskId } from './task-order';
+import { completedForDate, localCompletedHistory } from './task-views';
 
 const priorityMeta: Record<Priority, { label: string; meaning: string }> = {
   P1: { label: '중요', meaning: '높음' },
@@ -140,7 +141,7 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragStart, on
           <strong>{task.title}</strong>
           <Button variant="ghost" size="icon-xs" className="edit-task" aria-label={`${task.title} 수정`} onClick={() => onEdit(task.id)}><Pencil className="size-3.5" /></Button>
         </div>
-        {task.notionBlockId && (task.status === 'done' || task.notionStatus === '진행중') ? <span className={`notion-status ${task.status === 'done' ? 'done' : 'in-progress'}`}>{task.status === 'done' ? '완료' : '진행중'}</span> : null}
+        {task.status !== 'todo' ? <span className={`notion-status ${task.status === 'done' ? 'done' : 'in-progress'}`}>{task.status === 'done' ? '완료' : '진행중'}</span> : null}
         {task.summary ? <p>{task.summary}</p> : null}
         {task.notionPageId ? <div className="task-source">
           <span>{task.sourcePageTitle ?? 'Notion 회의록'}</span>
@@ -204,12 +205,13 @@ function AddTask({ onClose, onSaved, onDirtyChange, notionPages }: { onClose: ()
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [priority, setPriority] = useState<Priority>('P2');
+  const [status, setStatus] = useState<'todo' | 'in_progress'>('todo');
   const [reminder, setReminder] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [notionPageId, setNotionPageId] = useState<string | null>(null);
 
-  useEffect(() => onDirtyChange(Boolean(title.trim() || summary.trim() || reminder || priority !== 'P2' || notionPageId)), [title, summary, reminder, priority, notionPageId, onDirtyChange]);
+  useEffect(() => onDirtyChange(Boolean(title.trim() || summary.trim() || reminder || priority !== 'P2' || status !== 'todo' || notionPageId)), [title, summary, reminder, priority, status, notionPageId, onDirtyChange]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -225,6 +227,7 @@ function AddTask({ onClose, onSaved, onDirtyChange, notionPages }: { onClose: ()
         title,
         summary,
         priority,
+        status,
         plannedDate: localDate(),
         reminderAt: parseReminderInput(reminder),
         notionPageId,
@@ -238,26 +241,33 @@ function AddTask({ onClose, onSaved, onDirtyChange, notionPages }: { onClose: ()
   return (
     <form className="page add" onSubmit={submit}>
       <div className="heading"><h2>할 일 추가</h2><Button type="button" variant="ghost" className="add-trigger" onClick={onClose}>취소</Button></div>
-      <Label>할 일<Input autoFocus maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="무엇을 해볼까요?" /></Label>
-      <Label>짧은 설명<Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>
+      <Label>할 일 <span className="required">필수</span><Input autoFocus required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="무엇을 해볼까요?" /></Label>
+      <Label>짧은 설명 <span className="optional">선택</span><Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>
       <fieldset>
-        <legend>중요도</legend>
+        <legend>중요도 <span className="required">필수</span></legend>
         <div className="options">
           {(Object.keys(priorityMeta) as Priority[]).map((value) => (
-            <Button type="button" variant="outline" className={priority === value ? 'selected' : ''} onClick={() => setPriority(value)} key={value}>
+            <Button type="button" variant="outline" aria-pressed={priority === value} className={`priority-option ${value.toLowerCase()} ${priority === value ? 'selected' : ''}`} onClick={() => setPriority(value)} key={value}>
               <strong>{priorityMeta[value].label}</strong><span>{priorityMeta[value].meaning}</span>
             </Button>
           ))}
         </div>
       </fieldset>
-      {notionPages.length ? <fieldset>
-        <legend>저장할 곳</legend>
-        <div className="destination-options">
-          <Button type="button" variant="outline" className={!notionPageId ? 'selected' : ''} onClick={() => setNotionPageId(null)}>앱에만 저장</Button>
-          {notionPages.map((page) => <Button type="button" variant="outline" className={notionPageId === page.id.slice('notion:'.length) ? 'selected' : ''} onClick={() => setNotionPageId(page.id.slice('notion:'.length))} key={page.id}>{page.title}</Button>)}
+      <fieldset>
+        <legend>진행 상태 <span className="required">필수</span></legend>
+        <div className="status-options">
+          <Button type="button" variant="outline" aria-pressed={status === 'todo'} className={status === 'todo' ? 'selected' : ''} onClick={() => setStatus('todo')}>할 예정</Button>
+          <Button type="button" variant="outline" aria-pressed={status === 'in_progress'} className={status === 'in_progress' ? 'selected' : ''} onClick={() => setStatus('in_progress')}>진행중</Button>
         </div>
-        <p className="destination-help">회의록 맨 위에 체크박스로 추가되고, 짧은 설명은 그 아래에 표시돼요.</p>
-      </fieldset> : null}
+      </fieldset>
+      <fieldset>
+        <legend>저장할 곳 <span className="required">필수</span></legend>
+        <div className="destination-options">
+          <Button type="button" variant="outline" aria-pressed={!notionPageId} className={!notionPageId ? 'selected' : ''} onClick={() => setNotionPageId(null)}>앱에만 저장</Button>
+          {notionPages.map((page) => <Button type="button" variant="outline" aria-pressed={notionPageId === page.id.slice('notion:'.length)} className={notionPageId === page.id.slice('notion:'.length) ? 'selected' : ''} onClick={() => setNotionPageId(page.id.slice('notion:'.length))} key={page.id}>{page.title}</Button>)}
+        </div>
+        {notionPages.length ? <p className="destination-help">회의록 맨 위에 체크박스로 추가되고, 짧은 설명은 그 아래에 표시돼요.</p> : null}
+      </fieldset>
       <Label>
         리마인드 <span className="optional">선택</span>
         <Input type="text" inputMode="numeric" className="reminder-input" placeholder="MM.DD 00:00" value={reminder} onChange={(event) => setReminder(formatReminderInput(event.target.value))} aria-label="리마인드 날짜와 시간" />
@@ -280,6 +290,7 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
   const [deviceCode, setDeviceCode] = useState('');
   const [busy, setBusy] = useState<'notion' | 'microsoft' | 'sync' | null>(null);
   const [error, setError] = useState('');
+  const localCompleted = localCompletedHistory(state.tasks);
   async function connectNotion() {
     setBusy('notion'); setError('');
     try {
@@ -313,6 +324,11 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
       <Toggle label="할 일 푸시 리마인드" checked={state.settings.taskRemindersEnabled} onChange={(value) => update({ taskRemindersEnabled: value })} />
       <Button variant="secondary" className="position-reset" onClick={() => void window.doit.resetWindowPosition()}>상단 중앙으로 위치 초기화</Button>
       <p className="settings-note">위젯의 빈 공간이나 상단 헤더를 드래그해 원하는 곳으로 옮길 수 있어요.</p>
+      <h3>앱에만 저장한 완료 기록 <span className="archive-count">{localCompleted.length}개</span></h3>
+      {localCompleted.length ? <div className="local-archive">{localCompleted.map((task) => <div className="archive-task" key={task.id}>
+        <div><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></div>
+        <time dateTime={task.createdAt}>생성 {new Date(task.createdAt).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\.\s*/g, '.').replace(/\.$/, '')}</time>
+      </div>)}</div> : <p className="settings-note">앱에만 저장하고 완료한 할 일은 여기에 모여요.</p>}
       <h3>연동 및 동기화 관리</h3>
       <div className="connection"><span><strong>Notion 회의록 DB</strong><small>{state.sync.notion === 'synced' ? '연결됨 · 회의 일정 표시' : state.sync.notion === 'error' ? '동기화 오류' : '연결 안 됨'}</small></span></div>
       <p className="settings-note">회의록 DB의 Name·날짜 속성과 오늘 페이지의 체크박스를 읽어요. <Button variant="link" className="help-link" onClick={() => void window.doit.openHelp('notion')}>연결 도움말 ↗</Button></p>
@@ -343,6 +359,7 @@ export function App() {
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [now, setNow] = useState(new Date());
+  const today = localDate(now);
   const [dragOrder, setDragOrder] = useState<string[] | null>(null);
   const dragOrderRef = useRef<string[] | null>(null);
   const dragPositionRef = useRef<{ id: string; y: number; xOffset: number; yOffset: number } | null>(null);
@@ -360,21 +377,21 @@ export function App() {
   const remaining = useMemo(() => {
     const positions = new Map(state.taskOrder.map((id, index) => [id, index]));
     return state.tasks
-      .filter((task) => task.status !== 'done' && task.plannedDate === localDate() && !deletingIds.includes(task.id))
+      .filter((task) => task.status !== 'done' && task.plannedDate === today && !deletingIds.includes(task.id))
       .toSorted((a, b) => {
         const aPosition = positions.get(a.id);
         const bPosition = positions.get(b.id);
         if (aPosition !== undefined || bPosition !== undefined) return (aPosition ?? Infinity) - (bPosition ?? Infinity);
         return a.priority.localeCompare(b.priority) || a.createdAt.localeCompare(b.createdAt);
       });
-  }, [state.tasks, state.taskOrder, deletingIds]);
+  }, [state.tasks, state.taskOrder, deletingIds, today]);
   const displayedRemaining = useMemo(() => {
     if (!dragOrder || dragOrder.length !== remaining.length) return remaining;
     const byId = new Map(remaining.map((task) => [task.id, task]));
     const ordered = dragOrder.map((id) => byId.get(id)).filter((task): task is Task => Boolean(task));
     return ordered.length === remaining.length ? ordered : remaining;
   }, [remaining, dragOrder]);
-  const completed = useMemo(() => state.tasks.filter((task) => task.status === 'done' && !deletingIds.includes(task.id)), [state.tasks, deletingIds]);
+  const completed = useMemo(() => completedForDate(state.tasks, today, deletingIds), [state.tasks, deletingIds, today]);
   const meeting = state.settings.meetingNoticeEnabled ? meetingNotice(state.events, now) : null;
   const todayNotionPages = state.events.filter((event) => event.id.startsWith('notion:') && localDate(new Date(event.startAt)) === localDate(now));
   const todayEvents = state.events.filter((event) => !event.isCanceled && event.responseStatus !== 'declined'
@@ -606,7 +623,7 @@ export function App() {
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
               <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="add-trigger" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
               <div className="list"><AnimatePresence initial={false}>{displayedRemaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragStart={startTaskDrag} onDragMove={moveTaskDrag} onReorder={reorderTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
-              {!remaining.length ? <div className="all-done"><Bosongi animated /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
+              {!remaining.length ? <div className="all-done"><Bosongi animated /><strong>{completed.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
               {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}
               <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="secondary" className="undo-action" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
             </section>

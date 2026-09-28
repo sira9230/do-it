@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { AppState, Priority, Task } from './types.js';
+import type { AppState, Priority, Status, Task } from './types.js';
 import { createSerializedJsonWriter } from './state-file.js';
 
 const defaults: AppState = {
@@ -58,13 +58,13 @@ export function createTask(input: {
   title: string;
   summary: string;
   priority: Priority;
+  status: Exclude<Status, 'done'>;
   plannedDate: string;
   reminderAt: string | null;
 }): Task {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
-    status: 'todo',
     completedAt: null,
     createdAt: now,
     updatedAt: now,

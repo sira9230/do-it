@@ -209,7 +209,7 @@ function replaceNotionTasks(tasks: Task[]) {
   const previous = new Map(state.tasks.filter((task) => task.notionBlockId).map((task) => [task.id, task]));
   state.tasks = [...state.tasks.filter((task) => !task.notionBlockId), ...tasks.map((task) => {
     const local = previous.get(task.id);
-    return { ...task, reminderAt: local?.reminderAt ?? null };
+    return { ...task, reminderAt: local?.reminderAt ?? null, resumeStatus: local?.resumeStatus };
   })];
   rescheduleAllReminders();
 }
@@ -302,11 +302,14 @@ ipcMain.handle('task:create', async (_event, input: {
   title: string;
   summary: string;
   priority: Priority;
+  status: 'todo' | 'in_progress';
   plannedDate: string;
   reminderAt: string | null;
   notionPageId?: string | null;
 }) => {
   if (!input.title.trim() || input.title.trim().length > 200) throw new Error('제목은 1~200자로 입력해주세요.');
+  if (!['todo', 'in_progress'].includes(input.status)) throw new Error('진행 상태를 선택해주세요.');
+  if (!['P1', 'P2', 'P3'].includes(input.priority)) throw new Error('중요도를 선택해주세요.');
   if (input.reminderAt && new Date(input.reminderAt).getTime() <= Date.now()) throw new Error('리마인드는 현재보다 뒤의 시간으로 설정해주세요.');
   const next = createTask({ ...input, title: input.title.trim(), summary: input.summary.trim() });
   if (input.notionPageId) {
@@ -314,11 +317,12 @@ ipcMain.handle('task:create', async (_event, input: {
     if (!page) throw new Error('선택한 Notion 회의록 페이지를 찾을 수 없습니다.');
     const { notionToken } = await readCredentials();
     if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
-    const blockId = await appendNotionTodo(notionToken, input.notionPageId, next.title, next.summary, next.priority);
+    const blockId = await appendNotionTodo(notionToken, input.notionPageId, next.title, next.summary, next.priority, false, next.status === 'in_progress');
     next.id = `notion:${blockId}`;
     next.notionPageId = input.notionPageId;
     next.notionBlockId = blockId;
     next.sourcePageTitle = page.title;
+    if (next.status === 'in_progress') next.notionStatus = '진행중';
   }
   state.tasks.push(next);
   scheduleReminder(next);
@@ -346,7 +350,7 @@ ipcMain.handle('task:update', async (_event, input: { id: string; title: string;
     if (!page) throw new Error('선택한 Notion 회의록 페이지를 찾을 수 없습니다.');
     const { notionToken } = await readCredentials();
     if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
-    const blockId = await appendNotionTodo(notionToken, input.notionPageId, title, summary, item.priority, item.status === 'done');
+    const blockId = await appendNotionTodo(notionToken, input.notionPageId, title, summary, item.priority, item.status === 'done', item.status === 'in_progress' || item.resumeStatus === 'in_progress');
     newNotionBlock = { id: blockId, pageId: input.notionPageId, pageTitle: page.title };
   }
   item.title = title;
@@ -357,6 +361,7 @@ ipcMain.handle('task:update', async (_event, input: { id: string; title: string;
     item.notionPageId = newNotionBlock.pageId;
     item.notionBlockId = newNotionBlock.id;
     item.sourcePageTitle = newNotionBlock.pageTitle;
+    if (item.status === 'in_progress' || item.resumeStatus === 'in_progress') item.notionStatus = '진행중';
     state.taskOrder = state.taskOrder.map((id) => id === previousId ? item.id : id);
     cancelReminder(previousId);
     scheduleReminder(item);
@@ -376,7 +381,8 @@ ipcMain.handle('task:toggle', async (_event, id: string) => {
     await updateNotionTodo(notionToken, item.notionBlockId, wasDone);
   }
   const now = new Date().toISOString();
-  item.status = wasDone ? 'todo' : 'done';
+  if (item.status !== 'done') item.resumeStatus = item.status;
+  item.status = wasDone ? (item.resumeStatus ?? (item.notionStatus === '진행중' ? 'in_progress' : 'todo')) : 'done';
   item.completedAt = wasDone ? null : now;
   item.updatedAt = now;
   if (wasDone) scheduleReminder(item); else cancelReminder(item.id);
