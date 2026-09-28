@@ -21,6 +21,8 @@ let hoverRequestVersion = 0;
 let windowExpanded = false;
 let resizingWindow = false;
 let resizeVersion = 0;
+let resizeTimer: NodeJS.Timeout | null = null;
+let resolveResize: (() => void) | null = null;
 let expansionOrigin: { collapsedX: number; collapsedY: number; expandedX: number; expandedY: number } | null = null;
 let tray: Tray | null = null;
 let state: AppState;
@@ -54,6 +56,46 @@ function positionHoverWindow() {
   const y = bounds.y + bounds.height + 1 + HOVER_HEIGHT <= area.y + area.height
     ? bounds.y + bounds.height + 1 : bounds.y - HOVER_HEIGHT - 1;
   hoverWindow.setPosition(x, y, false);
+}
+
+function animateWidgetBounds(target: { x: number; y: number; width: number; height: number }, onComplete: () => void): Promise<void> {
+  if (!widgetWindow) return Promise.resolve();
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resolveResize?.();
+  const window = widgetWindow;
+  const start = window.getBounds();
+  const startedAt = Date.now();
+  const duration = 420;
+  const version = ++resizeVersion;
+  resizingWindow = true;
+  window.setResizable(true);
+
+  return new Promise((resolve) => {
+    resolveResize = resolve;
+    const frame = () => {
+      if (version !== resizeVersion || window.isDestroyed()) return;
+      const progress = Math.min(1, (Date.now() - startedAt) / duration);
+      const eased = (1 - Math.cos(Math.PI * progress)) / 2;
+      window.setBounds({
+        x: Math.round(start.x + (target.x - start.x) * eased),
+        y: Math.round(start.y + (target.y - start.y) * eased),
+        width: Math.round(start.width + (target.width - start.width) * eased),
+        height: Math.round(start.height + (target.height - start.height) * eased),
+      }, false);
+      positionHoverWindow();
+      if (progress < 1) {
+        resizeTimer = setTimeout(frame, 16);
+      } else {
+        resizeTimer = null;
+        window.setResizable(false);
+        onComplete();
+        resolveResize = null;
+        resolve();
+        setTimeout(() => { if (version === resizeVersion) resizingWindow = false; }, 80);
+      }
+    };
+    frame();
+  });
 }
 
 async function createHoverWindow() {
@@ -450,7 +492,7 @@ ipcMain.handle('widget:hover-count', async (_event, count: number | null) => {
 });
 ipcMain.handle('window:preview-hover', (_event, hovered: boolean, count: number) => {
   if (!widgetWindow) return;
-  if (windowExpanded) return;
+  if (windowExpanded || resizingWindow) return;
   const bounds = widgetWindow.getBounds();
   if (bounds.height > PREVIEW_HEIGHT) return;
   const area = screen.getDisplayMatching(bounds).workArea;
@@ -481,8 +523,9 @@ ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
   await persist();
   return state.settings;
 });
-ipcMain.handle('window:expand', (_event, expanded: boolean) => {
+ipcMain.handle('window:expand', async (_event, expanded: boolean) => {
   if (!widgetWindow) return;
+  if (windowExpanded === expanded) return;
   if (expanded) hoverWindow?.hide();
   const bounds = widgetWindow.getBounds();
   const area = screen.getDisplayMatching(bounds).workArea;
@@ -491,31 +534,31 @@ ipcMain.handle('window:expand', (_event, expanded: boolean) => {
   let x: number;
   let y: number;
   if (expanded) {
-    x = Math.min(Math.max(Math.round(bounds.x + (bounds.width - width) / 2), area.x), area.x + area.width - width);
-    y = Math.min(Math.max(Math.round(bounds.y + (COLLAPSED_HEIGHT - height) / 2), area.y), area.y + area.height - height);
-    expansionOrigin = { collapsedX: bounds.x, collapsedY: bounds.y, expandedX: x, expandedY: y };
+    x = expansionOrigin && resizeTimer
+      ? expansionOrigin.expandedX
+      : Math.min(Math.max(Math.round(bounds.x + (bounds.width - width) / 2), area.x), area.x + area.width - width);
+    y = expansionOrigin && resizeTimer
+      ? expansionOrigin.expandedY
+      : Math.min(Math.max(Math.round(bounds.y + (COLLAPSED_HEIGHT - height) / 2), area.y), area.y + area.height - height);
+    if (!expansionOrigin || !resizeTimer) expansionOrigin = { collapsedX: bounds.x, collapsedY: bounds.y, expandedX: x, expandedY: y };
   } else if (expansionOrigin) {
-    x = Math.min(Math.max(expansionOrigin.collapsedX + bounds.x - expansionOrigin.expandedX, area.x), area.x + area.width - width);
-    y = Math.min(Math.max(expansionOrigin.collapsedY + bounds.y - expansionOrigin.expandedY, area.y), area.y + area.height - height);
+    x = Math.min(Math.max(resizeTimer ? expansionOrigin.collapsedX : expansionOrigin.collapsedX + bounds.x - expansionOrigin.expandedX, area.x), area.x + area.width - width);
+    y = Math.min(Math.max(resizeTimer ? expansionOrigin.collapsedY : expansionOrigin.collapsedY + bounds.y - expansionOrigin.expandedY, area.y), area.y + area.height - height);
   } else {
     x = Math.round(bounds.x + (bounds.width - width) / 2);
     y = bounds.y;
   }
   windowExpanded = expanded;
-  resizingWindow = true;
-  const version = ++resizeVersion;
   if (positionSaveTimer) clearTimeout(positionSaveTimer);
-  widgetWindow.setResizable(true);
-  widgetWindow.setBounds({ x, y: bounds.y, width, height }, true);
-  widgetWindow.setResizable(false);
+  const transition = animateWidgetBounds({ x, y, width, height }, () => {
+    if (!expanded) {
+      state.settings.windowPosition = visiblePosition({ x, y });
+      void save(state);
+      expansionOrigin = null;
+    }
+  });
   if (expanded) widgetWindow.focus();
-  setTimeout(() => { if (version === resizeVersion) resizingWindow = false; }, 750);
-  if (!expanded) {
-    state.settings.windowPosition = visiblePosition({ x, y });
-    void save(state);
-    expansionOrigin = null;
-  }
-  positionHoverWindow();
+  await transition;
 });
 ipcMain.handle('window:quit', () => { quitting = true; app.quit(); });
 ipcMain.handle('window:reset-position', () => resetWindowPosition());
@@ -535,6 +578,6 @@ app.whenReady().then(async () => {
     widgetWindow.setPosition(next.x, next.y);
   });
 });
-app.on('before-quit', () => { quitting = true; if (syncTimer) clearInterval(syncTimer); });
+app.on('before-quit', () => { quitting = true; if (syncTimer) clearInterval(syncTimer); if (resizeTimer) clearTimeout(resizeTimer); });
 app.on('activate', () => widgetWindow?.showInactive());
 app.on('window-all-closed', () => {});

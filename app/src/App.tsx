@@ -350,6 +350,7 @@ export function App() {
   const [state, setState] = useState<AppState>(emptyState);
   const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [collapsing, setCollapsing] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [undoTask, setUndoTask] = useState<Task | null>(null);
@@ -366,6 +367,7 @@ export function App() {
   const lastDragAt = useRef(0);
   const previewDrag = useRef<{ source: EventTarget; screenX: number; screenY: number; windowX: number; windowY: number; moved: boolean } | null>(null);
   const suppressPreviewClick = useRef(false);
+  const collapsingRef = useRef(false);
 
   useEffect(() => {
     window.doit.getState().then((next) => { setState(next); setLoaded(true); });
@@ -522,13 +524,22 @@ export function App() {
   }
 
   function collapse() {
+    if (collapsingRef.current) return;
     if (draftDirty && (page === 'add' || page === 'edit')) {
       setDraftNotice(draftWarning);
       return;
     }
-    setPage('home');
-    setExpanded(false);
-    void window.doit.setExpanded(false);
+    collapsingRef.current = true;
+    setCollapsing(true);
+    void window.doit.setExpanded(false).then(() => {
+      setPage('home');
+      setExpanded(false);
+      setCollapsing(false);
+      collapsingRef.current = false;
+    }).catch(() => {
+      setCollapsing(false);
+      collapsingRef.current = false;
+    });
   }
 
   function handleSurfaceClick(event: React.MouseEvent<HTMLElement>) {
@@ -596,10 +607,10 @@ export function App() {
   if (!loaded) return <main className="shell loading"><Bosongi /><span>두잇 준비 중…</span></main>;
 
   return <MotionConfig reducedMotion="user">
-    <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
+    <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${collapsing ? 'morphing-close' : ''} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
       <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); if (draftDirty && (page === 'add' || page === 'edit')) setDraftNotice(draftWarning); else void window.doit.quitApp(); }}><X className="size-3" /></button>
       {!expanded ? (
-        <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag}>
+        <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: 1.025, filter: 'blur(3px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} transition={{ duration: .34, ease: [.22, 1, .36, 1] }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag}>
           <AnimatePresence initial={false}>
             {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: [0, 34, 65][index], scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event)} aria-label={`${task.title} · 할 일 목록 열기`}>
               <div className="preview-content">
@@ -612,7 +623,7 @@ export function App() {
           {!remaining.length ? <button type="button" className="preview-card current preview-empty interactive" onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event, 'add')}><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
         </motion.div>
       ) : (
-        <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 24, mass: .9 }}>
+        <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .975, filter: 'blur(3px)' }} animate={collapsing ? { opacity: 0, scale: .97, filter: 'blur(3px)' } : { opacity: 1, scale: 1, filter: 'blur(0px)' }} transition={{ duration: collapsing ? .2 : .38, ease: [.22, 1, .36, 1] }}>
           <header>
             <div className="header-leading"><Button variant="ghost" className="brand interactive" aria-label="위젯 접기" onClick={collapse}><Bosongi animated /></Button></div>
             <div><div className="window-grip" title="위젯 위치 이동" aria-label="위젯 위치 이동"><GripHorizontal className="size-4" /></div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => { if (draftDirty && (page === 'add' || page === 'edit')) setDraftNotice(draftWarning); else setPage('settings'); }}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
