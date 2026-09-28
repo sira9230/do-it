@@ -442,7 +442,7 @@ export function App() {
 
   return <MotionConfig reducedMotion="user">
     <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
-      <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3.5" /></button>
+      <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3" /></button>
       {!expanded ? (
         <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag}>
           <AnimatePresence initial={false}>
