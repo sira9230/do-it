@@ -314,32 +314,53 @@ ipcMain.handle('task:create', async (_event, input: {
     if (!page) throw new Error('선택한 Notion 회의록 페이지를 찾을 수 없습니다.');
     const { notionToken } = await readCredentials();
     if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
-    const blockId = await appendNotionTodo(notionToken, input.notionPageId, next.title, next.priority);
+    const blockId = await appendNotionTodo(notionToken, input.notionPageId, next.title, next.summary, next.priority);
     next.id = `notion:${blockId}`;
     next.notionPageId = input.notionPageId;
     next.notionBlockId = blockId;
+    next.sourcePageTitle = page.title;
   }
   state.tasks.push(next);
   scheduleReminder(next);
   await persist();
   return next;
 });
-ipcMain.handle('task:update', async (_event, input: { id: string; title: string; summary: string }) => {
+ipcMain.handle('task:update', async (_event, input: { id: string; title: string; summary: string; notionPageId?: string | null }) => {
   const item = state.tasks.find((candidate) => candidate.id === input.id);
   if (!item) throw new Error('수정할 할 일을 찾을 수 없습니다.');
   const title = input.title.trim();
   const summary = input.summary.trim();
   if (!title || title.length > 200) throw new Error('할 일은 1~200자로 입력해주세요.');
   if (summary.length > 500) throw new Error('설명은 500자 이하로 입력해주세요.');
+  if (item.notionBlockId && input.notionPageId && input.notionPageId !== item.notionPageId) throw new Error('기존 Notion 할 일의 저장 위치는 변경할 수 없습니다.');
   let notionTitleChanged = false;
+  let newNotionBlock: { id: string; pageId: string; pageTitle: string } | null = null;
   if (item.notionBlockId && item.title !== title) {
     const { notionToken } = await readCredentials();
     if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
     await updateNotionTodoTitle(notionToken, item.notionBlockId, title);
     notionTitleChanged = true;
   }
+  if (!item.notionBlockId && input.notionPageId) {
+    const page = state.events.find((event) => event.id === `notion:${input.notionPageId}`);
+    if (!page) throw new Error('선택한 Notion 회의록 페이지를 찾을 수 없습니다.');
+    const { notionToken } = await readCredentials();
+    if (!notionToken) throw new Error('Notion 연결 정보를 찾을 수 없습니다.');
+    const blockId = await appendNotionTodo(notionToken, input.notionPageId, title, summary, item.priority, item.status === 'done');
+    newNotionBlock = { id: blockId, pageId: input.notionPageId, pageTitle: page.title };
+  }
   item.title = title;
   if (!item.notionBlockId) item.summary = summary;
+  if (newNotionBlock) {
+    const previousId = item.id;
+    item.id = `notion:${newNotionBlock.id}`;
+    item.notionPageId = newNotionBlock.pageId;
+    item.notionBlockId = newNotionBlock.id;
+    item.sourcePageTitle = newNotionBlock.pageTitle;
+    state.taskOrder = state.taskOrder.map((id) => id === previousId ? item.id : id);
+    cancelReminder(previousId);
+    scheduleReminder(item);
+  }
   item.updatedAt = new Date().toISOString();
   await persist();
   if (notionTitleChanged) void refreshNotion();

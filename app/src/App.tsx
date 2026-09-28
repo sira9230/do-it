@@ -12,12 +12,14 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { AppState, CalendarEvent, Priority, Task } from './types';
 import { formatReminderInput, parseReminderInput } from './reminder';
+import { moveTaskId } from './task-order';
 
 const priorityMeta: Record<Priority, { label: string; meaning: string }> = {
   P1: { label: '중요', meaning: '높음' },
   P2: { label: '보통', meaning: '기본' },
   P3: { label: '천처니', meaning: '낮음' },
 };
+const draftWarning = '작성 중인 할 일이 있어요. 저장하거나 내용을 지운 뒤 이동해 주세요.';
 
 const emptyState: AppState = {
   tasks: [],
@@ -117,19 +119,19 @@ function PrioritySelector({ task, onChange }: { task: Task; onChange: (id: strin
   );
 }
 
-function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onReorder, onDragFinish }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void; onReorder?: (id: string, pointerY: number) => void; onDragFinish?: () => void }) {
+function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragStart, onDragMove, onReorder, onDragFinish }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void; onDragStart?: (id: string) => void; onDragMove?: (id: string, pointerY: number, offsetX: number, offsetY: number) => void; onReorder?: (id: string, pointerY: number) => void; onDragFinish?: () => void }) {
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   const [dragIntent, setDragIntent] = useState<'delete' | 'reorder'>('reorder');
   function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
     onDragFinish?.();
     if (onDelete && Math.abs(info.offset.x) > 115 && Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15) onDelete(task.id);
-    else if (onReorder && Math.abs(info.offset.y) > 12) onReorder(task.id, info.point.y);
+    else onReorder?.(task.id, info.point.y);
     setDragPoint(null);
   }
   return (
-    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 390, damping: 34 }} className="task-slot" data-task-id={task.id}>
+    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 310, damping: 28 }} className="task-slot" data-task-id={task.id}>
       {dragPoint ? <div className={`delete-placeholder ${dragIntent === 'reorder' ? 'reorder-placeholder' : ''}`}>{dragIntent === 'delete' ? <Trash2 className="size-4" /> : <GripHorizontal className="size-4" />}<span>{dragIntent === 'delete' ? '놓으면 삭제' : '위아래로 옮겨 순서 변경'}</span></div> : null}
-      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onDragStart={(_event, info) => setDragPoint(info.point)} onDrag={(_event, info) => { setDragPoint(info.point); setDragIntent(Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15 && Math.abs(info.offset.x) > 24 ? 'delete' : 'reorder'); }} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint ? 'dragging-source' : ''}`}>
+      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onDragStart={(_event, info) => { setDragPoint(info.point); onDragStart?.(task.id); }} onDrag={(_event, info) => { setDragPoint(info.point); setDragIntent(Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15 && Math.abs(info.offset.x) > 24 ? 'delete' : 'reorder'); onDragMove?.(task.id, info.point.y, info.offset.x, info.offset.y); }} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint ? 'dragging-source' : ''}`}>
       <TaskCheckbox task={task} onToggle={onToggle} />
       <div>
         <div className="title-line">
@@ -155,11 +157,14 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onReorder, onDr
   );
 }
 
-function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
+function EditTask({ task, onClose, onSaved, onDirtyChange, notionPages }: { task: Task; onClose: () => void; onSaved: () => void; onDirtyChange: (dirty: boolean) => void; notionPages: CalendarEvent[] }) {
   const [title, setTitle] = useState(task.title);
   const [summary, setSummary] = useState(task.summary);
+  const [notionPageId, setNotionPageId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => onDirtyChange(title !== task.title || summary !== task.summary || Boolean(notionPageId)), [title, summary, notionPageId, task.title, task.summary, onDirtyChange]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -168,8 +173,8 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
     setSaving(true);
     setError('');
     try {
-      await window.doit.updateTask({ id: task.id, title, summary });
-      onClose();
+      await window.doit.updateTask({ id: task.id, title, summary, notionPageId });
+      onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '수정하지 못했어요.');
     } finally { setSaving(false); }
@@ -180,13 +185,21 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
     <Label>할 일<Input autoFocus maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} /></Label>
     {task.notionBlockId ? <div className="edit-context"><strong>설명 · 상위 항목</strong><p>{task.summary || '상위 항목이 없어요.'}</p><small>상위 항목은 Notion 회의록에서 변경할 수 있어요.</small></div>
       : <Label>짧은 설명<Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>}
+    {!task.notionBlockId && notionPages.length ? <fieldset>
+      <legend>저장할 곳</legend>
+      <div className="destination-options">
+        <Button type="button" variant="outline" className={!notionPageId ? 'selected' : ''} onClick={() => setNotionPageId(null)}>앱에만 저장</Button>
+        {notionPages.map((page) => <Button type="button" variant="outline" className={notionPageId === page.id.slice('notion:'.length) ? 'selected' : ''} onClick={() => setNotionPageId(page.id.slice('notion:'.length))} key={page.id}>{page.title}</Button>)}
+      </div>
+      <p className="destination-help">회의록 맨 위에 체크박스로 추가되고, 짧은 설명은 그 아래에 표시돼요.</p>
+    </fieldset> : null}
     {task.notionPageId ? <Button type="button" variant="link" className="edit-notion-link" onClick={() => void window.doit.openNotionPage(task.notionPageId!)}>Notion <ExternalLink className="size-3.5" /></Button> : null}
     {error ? <p className="error" role="alert">{error}</p> : null}
     <Button type="submit" className="primary" disabled={saving}>{saving ? '저장 중…' : '변경 사항 저장'}</Button>
   </form>;
 }
 
-function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: CalendarEvent[] }) {
+function AddTask({ onClose, onSaved, onDirtyChange, notionPages }: { onClose: () => void; onSaved: () => void; onDirtyChange: (dirty: boolean) => void; notionPages: CalendarEvent[] }) {
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [priority, setPriority] = useState<Priority>('P2');
@@ -194,6 +207,8 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [notionPageId, setNotionPageId] = useState<string | null>(null);
+
+  useEffect(() => onDirtyChange(Boolean(title.trim() || summary.trim() || reminder || priority !== 'P2' || notionPageId)), [title, summary, reminder, priority, notionPageId, onDirtyChange]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -213,7 +228,7 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
         reminderAt: parseReminderInput(reminder),
         notionPageId,
       });
-      onClose();
+      onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '저장하지 못했어요.');
     } finally { setSaving(false); }
@@ -240,7 +255,7 @@ function AddTask({ onClose, notionPages }: { onClose: () => void; notionPages: C
           <Button type="button" variant="outline" className={!notionPageId ? 'selected' : ''} onClick={() => setNotionPageId(null)}>앱에만 저장</Button>
           {notionPages.map((page) => <Button type="button" variant="outline" className={notionPageId === page.id.slice('notion:'.length) ? 'selected' : ''} onClick={() => setNotionPageId(page.id.slice('notion:'.length))} key={page.id}>{page.title}</Button>)}
         </div>
-        <p className="destination-help">회의록을 선택하면 해당 페이지 맨 아래에 체크박스로 추가돼요.</p>
+        <p className="destination-help">회의록 맨 위에 체크박스로 추가되고, 짧은 설명은 그 아래에 표시돼요.</p>
       </fieldset> : null}
       <Label>
         리마인드 <span className="optional">선택</span>
@@ -323,8 +338,13 @@ export function App() {
   const [undoTask, setUndoTask] = useState<Task | null>(null);
   const [page, setPage] = useState<'home' | 'add' | 'edit' | 'settings'>('home');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const dragOrderRef = useRef<string[] | null>(null);
+  const dragPositionRef = useRef<{ id: string; y: number; xOffset: number; yOffset: number } | null>(null);
   const lastDragAt = useRef(0);
   const previewDrag = useRef<{ source: EventTarget; screenX: number; screenY: number; windowX: number; windowY: number; moved: boolean } | null>(null);
   const suppressPreviewClick = useRef(false);
@@ -347,6 +367,12 @@ export function App() {
         return a.priority.localeCompare(b.priority) || a.createdAt.localeCompare(b.createdAt);
       });
   }, [state.tasks, state.taskOrder, deletingIds]);
+  const displayedRemaining = useMemo(() => {
+    if (!dragOrder || dragOrder.length !== remaining.length) return remaining;
+    const byId = new Map(remaining.map((task) => [task.id, task]));
+    const ordered = dragOrder.map((id) => byId.get(id)).filter((task): task is Task => Boolean(task));
+    return ordered.length === remaining.length ? ordered : remaining;
+  }, [remaining, dragOrder]);
   const completed = useMemo(() => state.tasks.filter((task) => task.status === 'done' && !deletingIds.includes(task.id)), [state.tasks, deletingIds]);
   const meeting = state.settings.meetingNoticeEnabled ? meetingNotice(state.events, now) : null;
   const todayNotionPages = state.events.filter((event) => event.id.startsWith('notion:') && localDate(new Date(event.startAt)) === localDate(now));
@@ -367,7 +393,29 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [undoTask]);
 
+  useEffect(() => {
+    if (!draftNotice) return;
+    const timer = window.setTimeout(() => setDraftNotice(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [draftNotice]);
+
+  useEffect(() => {
+    if (!dragOrder) return;
+    const timer = window.setInterval(() => {
+      const position = dragPositionRef.current;
+      const scroller = document.querySelector<HTMLElement>('.page.home');
+      if (!position || !scroller) return;
+      const viewport = scroller.getBoundingClientRect();
+      const previous = scroller.scrollTop;
+      if (position.y < viewport.top + 42) scroller.scrollTop -= 10;
+      else if (position.y > viewport.bottom - 42) scroller.scrollTop += 10;
+      if (scroller.scrollTop !== previous) moveTaskDrag(position.id, position.y, position.xOffset, position.yOffset, false);
+    }, 30);
+    return () => window.clearInterval(timer);
+  }, [Boolean(dragOrder)]);
+
   async function deleteTask(id: string) {
+    clearTaskDrag();
     const task = state.tasks.find((candidate) => candidate.id === id);
     if (!task) return;
     setDeletingIds((ids) => [...ids, id]);
@@ -389,42 +437,101 @@ export function App() {
     catch (cause) { setUndoTask(task); window.alert(cause instanceof Error ? cause.message : '할 일을 되돌리지 못했어요.'); }
   }
 
-  function reorderTask(id: string, pointerY: number) {
-    const dragged = remaining.find((task) => task.id === id);
-    if (!dragged) return;
-    const others = remaining.filter((task) => task.id !== id);
+  function clearTaskDrag() {
+    dragOrderRef.current = null;
+    dragPositionRef.current = null;
+    setDragOrder(null);
+  }
+
+  function startTaskDrag() {
+    const ids = remaining.map((task) => task.id);
+    dragOrderRef.current = ids;
+    setDragOrder(ids);
+  }
+
+  function moveTaskDrag(id: string, pointerY: number, offsetX: number, offsetY: number, scroll = true) {
+    if (!dragOrderRef.current) return;
+    dragPositionRef.current = { id, y: pointerY, xOffset: offsetX, yOffset: offsetY };
+    if (Math.abs(offsetX) > 24 && Math.abs(offsetX) > Math.abs(offsetY) * 1.15) {
+      const original = remaining.map((task) => task.id);
+      if (!dragOrderRef.current.every((candidate, index) => candidate === original[index])) {
+        dragOrderRef.current = original;
+        setDragOrder(original);
+      }
+      return;
+    }
+    const scroller = document.querySelector<HTMLElement>('.page.home');
+    if (scroller && scroll) {
+      const viewport = scroller.getBoundingClientRect();
+      if (pointerY < viewport.top + 42) scroller.scrollTop -= 12;
+      else if (pointerY > viewport.bottom - 42) scroller.scrollTop += 12;
+    }
+    const current = dragOrderRef.current;
+    const others = current.filter((candidate) => candidate !== id);
     const slots = [...document.querySelectorAll<HTMLElement>('.list .task-slot')];
-    const insertAt = others.findIndex((task) => {
-      const slot = slots.find((element) => element.dataset.taskId === task.id);
+    const insertAt = others.findIndex((candidate) => {
+      const slot = slots.find((element) => element.dataset.taskId === candidate);
       if (!slot) return false;
       const bounds = slot.getBoundingClientRect();
       return pointerY < bounds.top + bounds.height / 2;
     });
-    const reordered = [...others];
-    reordered.splice(insertAt < 0 ? others.length : insertAt, 0, dragged);
-    if (reordered.every((task, index) => task.id === remaining[index]?.id)) return;
-    void window.doit.reorderTasks(reordered.map((task) => task.id)).catch((cause) => {
+    const reordered = moveTaskId(current, id, insertAt);
+    if (reordered.every((candidate, index) => candidate === current[index])) return;
+    dragOrderRef.current = reordered;
+    setDragOrder(reordered);
+  }
+
+  function reorderTask(id: string, pointerY: number) {
+    moveTaskDrag(id, pointerY, 0, 0, false);
+    const order = dragOrderRef.current;
+    dragPositionRef.current = null;
+    if (!order || order.every((candidate, index) => candidate === remaining[index]?.id)) { clearTaskDrag(); return; }
+    void window.doit.reorderTasks(order).then(() => { if (dragOrderRef.current === order) clearTaskDrag(); }).catch((cause) => {
+      if (dragOrderRef.current === order) clearTaskDrag();
       window.alert(cause instanceof Error ? cause.message : '순서를 바꾸지 못했어요.');
     });
   }
 
   function open(next: 'home' | 'add' | 'settings' = 'home') {
+    if (draftDirty && (page === 'add' || page === 'edit')) {
+      setDraftNotice(draftWarning);
+      return;
+    }
+    if (next === 'add') setDraftDirty(false);
     setPage(next);
     setExpanded(true);
     void window.doit.setExpanded(true);
   }
 
   function collapse() {
+    if (draftDirty && (page === 'add' || page === 'edit')) {
+      setDraftNotice(draftWarning);
+      return;
+    }
     setPage('home');
     setExpanded(false);
     void window.doit.setExpanded(false);
   }
 
   function handleSurfaceClick(event: React.MouseEvent<HTMLElement>) {
-    if (!expanded || Date.now() - lastDragAt.current < 600) return;
+    if (!expanded || page === 'add' || page === 'edit' || Date.now() - lastDragAt.current < 600) return;
     const target = event.target;
     if (!(target instanceof Element) || target.closest('button, input, textarea, select, a, [role="checkbox"], [role="menuitem"], [contenteditable="true"]')) return;
     collapse();
+  }
+
+  function closeEditor() {
+    if (draftDirty) {
+      setDraftNotice(draftWarning);
+      return;
+    }
+    setPage('home');
+  }
+
+  function savedEditor() {
+    setDraftDirty(false);
+    setDraftNotice(null);
+    setPage('home');
   }
 
   function startPreviewDrag(event: React.PointerEvent<HTMLElement>) {
@@ -458,21 +565,21 @@ export function App() {
     const handleKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && expanded) collapse(); };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [expanded]);
+  }, [expanded, page, draftDirty]);
 
   useEffect(() => {
     if (!expanded) return;
     return window.doit.onOutsideClick(() => collapse());
-  }, [expanded]);
+  }, [expanded, page, draftDirty]);
 
   const toggle = (id: string) => void window.doit.toggleTask(id);
   const changePriority = (id: string, priority: Priority) => void window.doit.setTaskPriority(id, priority);
-  const editTask = (id: string) => { setEditingTaskId(id); setPage('edit'); };
+  const editTask = (id: string) => { setDraftDirty(false); setEditingTaskId(id); setPage('edit'); };
   if (!loaded) return <main className="shell loading"><Bosongi /><span>두잇 준비 중…</span></main>;
 
   return <MotionConfig reducedMotion="user">
     <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
-      <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3" /></button>
+      <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); if (draftDirty && (page === 'add' || page === 'edit')) setDraftNotice(draftWarning); else void window.doit.quitApp(); }}><X className="size-3" /></button>
       {!expanded ? (
         <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag}>
           <AnimatePresence initial={false}>
@@ -490,19 +597,20 @@ export function App() {
         <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 24, mass: .9 }}>
           <header>
             <div className="header-leading"><Button variant="ghost" className="brand interactive" aria-label="위젯 접기" onClick={collapse}><Bosongi animated /></Button></div>
-            <div><div className="window-grip" title="위젯 위치 이동" aria-label="위젯 위치 이동"><GripHorizontal className="size-4" /></div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => setPage('settings')}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
+            <div><div className="window-grip" title="위젯 위치 이동" aria-label="위젯 위치 이동"><GripHorizontal className="size-4" /></div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => { if (draftDirty && (page === 'add' || page === 'edit')) setDraftNotice(draftWarning); else setPage('settings'); }}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
           </header>
-          {page === 'add' ? <AddTask onClose={() => setPage('home')} notionPages={todayNotionPages} /> : page === 'edit' && editingTask ? <EditTask key={editingTask.id} task={editingTask} onClose={() => setPage('home')} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
+          {page === 'add' ? <AddTask onClose={closeEditor} onSaved={savedEditor} onDirtyChange={setDraftDirty} notionPages={todayNotionPages} /> : page === 'edit' && editingTask ? <EditTask key={editingTask.id} task={editingTask} onClose={closeEditor} onSaved={savedEditor} onDirtyChange={setDraftDirty} notionPages={todayNotionPages} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
             <section className="page home">
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
               <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="add-trigger" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
-              <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onReorder={reorderTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
+              <div className="list"><AnimatePresence initial={false}>{displayedRemaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragStart={startTaskDrag} onDragMove={moveTaskDrag} onReorder={reorderTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
               {!remaining.length ? <div className="all-done"><Bosongi animated /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
               {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}
               <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="secondary" className="undo-action" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
             </section>
           )}
+          <AnimatePresence>{draftNotice ? <motion.div className="draft-toast" role="status" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>{draftNotice}</motion.div> : null}</AnimatePresence>
         </motion.div>
       )}
     </main>

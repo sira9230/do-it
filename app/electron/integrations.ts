@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CalendarEvent, Priority, Task } from './types.js';
 import { inlinePriority, inlineTaskStatus, isPriorityCode, replaceVisibleTitle, visibleText, writableRichText } from './notion-rich-text.js';
+import { notionTodoAppendBody } from './notion-task-block.js';
 import type { NotionRichText } from './notion-rich-text.js';
 
 const NOTION_DATA_SOURCE = '159563d4-3059-8187-9a21-000b9c31881e';
@@ -66,7 +67,7 @@ interface NotionBlock {
   heading_3?: { rich_text: NotionRichText[] };
 }
 
-interface ContextualBlock { block: NotionBlock; description: string }
+interface ContextualBlock { block: NotionBlock; description: string; parentId?: string; parentType?: string }
 
 function blockRichText(block: NotionBlock): NotionRichText[] {
   return block.to_do?.rich_text ?? block.paragraph?.rich_text ?? block.bulleted_list_item?.rich_text
@@ -139,7 +140,7 @@ function parseMeetingLine(value: string, day: string, pageId: string, blockId: s
   };
 }
 
-async function fetchPageBlocks(token: string, blockId: string, depth = 0, inheritedDescription = ''): Promise<ContextualBlock[]> {
+async function fetchPageBlocks(token: string, blockId: string, depth = 0, inheritedDescription = '', parentId?: string, parentType?: string): Promise<ContextualBlock[]> {
   if (depth > 5) return [];
   const found: ContextualBlock[] = [];
   let heading = inheritedDescription;
@@ -153,11 +154,11 @@ async function fetchPageBlocks(token: string, blockId: string, depth = 0, inheri
     );
     for (const block of data.results) {
       if (/^heading_[123]$/.test(block.type)) heading = blockText(block) || heading;
-      found.push({ block, description: heading });
+      found.push({ block, description: heading, parentId, parentType });
       if (block.has_children && block.type !== 'child_page' && block.type !== 'child_database') {
         await new Promise((resolve) => setTimeout(resolve, 350));
         const parentTitle = blockText(block);
-        found.push(...await fetchPageBlocks(token, block.id, depth + 1, parentTitle || heading));
+        found.push(...await fetchPageBlocks(token, block.id, depth + 1, parentTitle || heading, block.id, block.type));
       }
     }
     cursor = data.has_more ? data.next_cursor ?? undefined : undefined;
@@ -210,7 +211,14 @@ export async function fetchNotionData(token: string): Promise<{ events: Calendar
       });
       if (dateString(date.start) === dateString(now.toISOString())) {
         const pageTitle = page.properties.Name?.title?.map((part) => part.plain_text ?? '').join('') || '회의록';
-        for (const { block, description } of await fetchPageBlocks(token, page.id)) {
+        const pageBlocks = await fetchPageBlocks(token, page.id);
+        const childDescriptions = new Map<string, string>();
+        for (const { block, parentId, parentType } of pageBlocks) {
+          if (parentType !== 'to_do' || !parentId || block.type !== 'paragraph') continue;
+          const content = blockText(block);
+          if (content) childDescriptions.set(parentId, [childDescriptions.get(parentId), content].filter(Boolean).join('\n'));
+        }
+        for (const { block, description } of pageBlocks) {
           const content = blockText(block);
           const meeting = parseMeetingLine(content, dateString(date.start), page.id, block.id);
           if (meeting) events.push(meeting);
@@ -224,7 +232,7 @@ export async function fetchNotionData(token: string): Promise<{ events: Calendar
             notionBlockId: block.id,
             sourcePageTitle: pageTitle,
             title,
-            summary: description,
+            summary: childDescriptions.get(block.id) ?? description,
             priority: blockPriority(block),
             status: block.to_do?.checked ? 'done' : 'todo',
             notionStatus: inlineTaskStatus(block.to_do?.rich_text ?? []) ?? undefined,
@@ -293,28 +301,13 @@ export async function updateNotionTodoTitle(token: string, blockId: string, titl
   });
 }
 
-export async function appendNotionTodo(token: string, pageId: string, title: string, priority: Priority): Promise<string> {
-  const color = priority === 'P1' ? 'red_background' : priority === 'P3' ? 'gray_background' : 'blue_background';
+export async function appendNotionTodo(token: string, pageId: string, title: string, summary: string, priority: Priority, checked = false): Promise<string> {
   const result = await responseJson<{ results: { id: string }[] }>(
     `https://api.notion.com/v1/blocks/${pageId}/children`,
     {
       method: 'PATCH',
-      headers: notionHeaders(token),
-      body: JSON.stringify({
-        children: [{
-          object: 'block',
-          type: 'to_do',
-          to_do: {
-            rich_text: [
-              { type: 'text', text: { content: title } },
-              { type: 'text', text: { content: ' ' } },
-              { type: 'text', text: { content: priority === 'P3' ? '추후 진행' : priority }, annotations: { code: true } },
-            ],
-            checked: false,
-            color,
-          },
-        }],
-      }),
+      headers: { ...notionHeaders(token), 'Notion-Version': '2026-03-11' },
+      body: JSON.stringify(notionTodoAppendBody(title, summary, priority, checked)),
     },
   );
   if (!result.results[0]?.id) throw new Error('Notion에서 새 체크박스 ID를 받지 못했습니다.');

@@ -245,5 +245,6 @@ button { cursor: pointer; }
 .undo-toast { position: absolute; bottom: 13px; left: 13px; right: 13px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 15px; background: var(--foreground); color: var(--background); box-shadow: 0 16px 55px oklch(0 0 0 / .10); font-size: 12px; }
 .undo-toast .undo-action { min-height: 30px; padding: 5px 10px; border-radius: 10px; background: var(--background); color: var(--foreground); font-size: 12px; font-weight: 600; }
 .undo-toast .undo-action:hover { background: var(--muted); color: var(--foreground); }
+.draft-toast { position: absolute; bottom: 13px; left: 49px; right: 13px; z-index: 25; padding: 11px 13px; border-radius: 13px; background: var(--foreground); color: var(--background); box-shadow: 0 12px 42px oklch(0 0 0 / .12); font-size: 12px; font-weight: 500; line-height: 1.45; }
 
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

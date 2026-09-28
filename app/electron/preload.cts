@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('doit', {
     reminderAt: string | null;
     notionPageId?: string | null;
   }): Promise<Task> => ipcRenderer.invoke('task:create', input),
-  updateTask: (input: { id: string; title: string; summary: string }): Promise<Task> => ipcRenderer.invoke('task:update', input),
+  updateTask: (input: { id: string; title: string; summary: string; notionPageId?: string | null }): Promise<Task> => ipcRenderer.invoke('task:update', input),
   toggleTask: (id: string): Promise<Task> => ipcRenderer.invoke('task:toggle', id),
   setTaskPriority: (id: string, priority: Priority): Promise<Task> => ipcRenderer.invoke('task:priority', id, priority),
   reorderTasks: (ids: string[]): Promise<void> => ipcRenderer.invoke('task:reorder', ids),
