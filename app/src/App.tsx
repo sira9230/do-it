@@ -323,7 +323,7 @@ export function App() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [now, setNow] = useState(new Date());
   const lastDragAt = useRef(0);
-  const previewDrag = useRef<{ screenX: number; screenY: number; windowX: number; windowY: number; moved: boolean } | null>(null);
+  const previewDrag = useRef<{ source: EventTarget; screenX: number; screenY: number; windowX: number; windowY: number; moved: boolean } | null>(null);
   const suppressPreviewClick = useRef(false);
 
   useEffect(() => {
@@ -397,16 +397,16 @@ export function App() {
     collapse();
   }
 
-  function startPreviewDrag(event: React.PointerEvent<HTMLButtonElement>) {
-    if (event.button !== 0) return;
+  function startPreviewDrag(event: React.PointerEvent<HTMLElement>) {
+    if (event.button !== 0 || (event.currentTarget.classList.contains('collapsed-inner') && event.target !== event.currentTarget)) return;
     suppressPreviewClick.current = false;
-    previewDrag.current = { screenX: event.screenX, screenY: event.screenY, windowX: window.screenX, windowY: window.screenY, moved: false };
+    previewDrag.current = { source: event.currentTarget, screenX: event.screenX, screenY: event.screenY, windowX: window.screenX, windowY: window.screenY, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function movePreview(event: React.PointerEvent<HTMLButtonElement>) {
+  function movePreview(event: React.PointerEvent<HTMLElement>) {
     const drag = previewDrag.current;
-    if (!drag) return;
+    if (!drag || drag.source !== event.currentTarget) return;
     const dx = event.screenX - drag.screenX;
     const dy = event.screenY - drag.screenY;
     if (!drag.moved && Math.hypot(dx, dy) < 5) return;
@@ -415,7 +415,9 @@ export function App() {
     void window.doit.moveWindow(Math.round(drag.windowX + dx), Math.round(drag.windowY + dy));
   }
 
-  function finishPreviewDrag() { previewDrag.current = null; }
+  function finishPreviewDrag(event: React.PointerEvent<HTMLElement>) {
+    if (previewDrag.current?.source === event.currentTarget) previewDrag.current = null;
+  }
 
   function openFromPreview(event: React.MouseEvent<HTMLButtonElement>, next: 'home' | 'add' = 'home') {
     if (suppressPreviewClick.current) { suppressPreviewClick.current = false; event.preventDefault(); return; }
@@ -442,7 +444,7 @@ export function App() {
     <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
       <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); void window.doit.quitApp(); }}><X className="size-3.5" /></button>
       {!expanded ? (
-        <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }}>
+        <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag}>
           <AnimatePresence initial={false}>
             {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: [0, 37, 69][index], scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event)} aria-label={`${task.title} · 할 일 목록 열기`}>
               {index === 0 ? <Bosongi /> : null}
