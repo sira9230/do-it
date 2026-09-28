@@ -8,8 +8,8 @@ import type { AppState, CalendarEvent, Priority, Settings, Task } from './types.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WINDOW_WIDTH = 316;
 const EXPANDED_WIDTH = 432;
-const COLLAPSED_HEIGHT = 60;
-const PREVIEW_HEIGHT = 114;
+const COLLAPSED_HEIGHT = 56;
+const PREVIEW_HEIGHT = 110;
 const HOVER_WIDTH = 126;
 const HOVER_HEIGHT = 32;
 const EXPANDED_HEIGHT = 620;
@@ -417,7 +417,7 @@ ipcMain.handle('window:preview-hover', (_event, hovered: boolean, count: number)
   if (bounds.height > PREVIEW_HEIGHT) return;
   const area = screen.getDisplayMatching(bounds).workArea;
   const cards = Number.isInteger(count) ? Math.max(1, Math.min(3, count)) : 1;
-  const preferredHeight = [COLLAPSED_HEIGHT, 84, PREVIEW_HEIGHT][cards - 1];
+  const preferredHeight = [COLLAPSED_HEIGHT, 80, PREVIEW_HEIGHT][cards - 1];
   const height = hovered ? Math.max(COLLAPSED_HEIGHT, Math.min(preferredHeight, area.y + area.height - bounds.y - HOVER_HEIGHT - 2)) : COLLAPSED_HEIGHT;
   if (bounds.height === height) return;
   widgetWindow.setResizable(true);
