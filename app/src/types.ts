@@ -40,6 +40,7 @@ export interface Settings {
 
 export interface AppState {
   tasks: Task[];
+  taskOrder: string[];
   events: CalendarEvent[];
   settings: Settings;
   sync: {
@@ -65,6 +66,7 @@ export interface DoitAPI {
   updateTask(input: { id: string; title: string; summary: string }): Promise<Task>;
   toggleTask(id: string): Promise<Task>;
   setTaskPriority(id: string, priority: Priority): Promise<Task>;
+  reorderTasks(ids: string[]): Promise<void>;
   deleteTask(id: string): Promise<void>;
   restoreTask(task: Task): Promise<void>;
   showHoverCount(count: number | null): Promise<void>;

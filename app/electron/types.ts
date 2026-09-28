@@ -41,6 +41,7 @@ export interface Settings {
 
 export interface AppState {
   tasks: Task[];
+  taskOrder: string[];
   events: CalendarEvent[];
   settings: Settings;
   sync: {

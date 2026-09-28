@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('doit', {
   updateTask: (input: { id: string; title: string; summary: string }): Promise<Task> => ipcRenderer.invoke('task:update', input),
   toggleTask: (id: string): Promise<Task> => ipcRenderer.invoke('task:toggle', id),
   setTaskPriority: (id: string, priority: Priority): Promise<Task> => ipcRenderer.invoke('task:priority', id, priority),
+  reorderTasks: (ids: string[]): Promise<void> => ipcRenderer.invoke('task:reorder', ids),
   deleteTask: (id: string): Promise<void> => ipcRenderer.invoke('task:delete', id),
   restoreTask: (task: Task): Promise<void> => ipcRenderer.invoke('task:restore', task),
   showHoverCount: (count: number | null): Promise<void> => ipcRenderer.invoke('widget:hover-count', count),

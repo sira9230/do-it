@@ -108,14 +108,19 @@ button { cursor: pointer; }
 .shell.expanded .floating-close { top: -3px; left: -10px; }
 .interactive, .priority-trigger { -webkit-app-region: no-drag; }
 .brand { height: auto; padding: 0; border: 0; background: transparent; }
-.bosongi { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; }
+.bosongi { position: relative; width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; }
 .bosongi img { width: 100%; height: 100%; object-fit: contain; }
+.bosongi .bosongi-blink { position: absolute; inset: 0; opacity: 0; }
+.bosongi-animated { animation: bosongi-peek 5.5s ease-in-out infinite; transform-origin: 50% 70%; }
+.bosongi-animated .bosongi-blink { animation: bosongi-smile 5.5s ease-in-out infinite; }
+@keyframes bosongi-peek { 0%, 32%, 48%, 100% { transform: rotate(0deg) translateY(0); } 38% { transform: rotate(-4deg) translateY(-1px); } 43% { transform: rotate(2deg) translateY(0); } }
+@keyframes bosongi-smile { 0%, 36%, 44%, 100% { opacity: 0; } 39%, 41% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .bosongi-animated, .bosongi-animated .bosongi-blink { animation: none; } }
 .preview-card { position: absolute; top: 4px; left: 34px; width: calc(100% - 40px); height: 44px; display: flex; align-items: center; gap: 8px; padding: 4px 12px; overflow: hidden; border: 0; border-radius: 16px; background: var(--card); color: var(--foreground); text-align: left; box-shadow: 0 12px 42px oklch(0 0 0 / .05); transform-origin: center top; cursor: grab; touch-action: none; }
 .preview-card:has(.preview-meeting) { height: 48px; }
 .preview-card:has(.preview-meeting) .preview-content { gap: 3px; }
 .preview-card:active { cursor: grabbing; }
 .preview-card.current { box-shadow: 0 15px 55px oklch(0 0 0 / .065); }
-.preview-card.current .bosongi, .preview-empty .bosongi { width: 22px; height: 22px; }
 .preview-card.next { left: 22px; width: calc(100% - 16px); box-shadow: 0 12px 42px oklch(0 0 0 / .04); }
 .preview-card.next .preview-content { padding-left: 4px; }
 .preview-card > svg { flex: 0 0 auto; width: 16px; height: 16px; margin-left: auto; color: var(--muted-foreground); }
@@ -141,7 +146,6 @@ button { cursor: pointer; }
 .expanded-inner header .header-leading { align-items: center; gap: 9px; }
 .window-grip { width: 28px; height: 36px; display: grid; place-items: center; color: var(--muted-foreground); cursor: grab; -webkit-app-region: drag; }
 .brand { display: flex; align-items: center; gap: 8px; }
-.brand > span { font-family: "Paperlogy", "Pretendard Variable", sans-serif; font-size: 16px; font-weight: 800; letter-spacing: -.015em; }
 .page { height: calc(100% - 60px); overflow-y: auto; padding: 18px 16px 24px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .heading h1 { margin: 0; display: flex; align-items: baseline; gap: 9px; font-size: 17px; font-weight: 600; line-height: 1.4; }
@@ -161,6 +165,7 @@ button { cursor: pointer; }
 .task-row:active { cursor: grabbing; }
 .task-row.dragging-source { opacity: 0 !important; }
 .delete-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; background: color-mix(in oklch, var(--destructive) 8%, white); color: var(--destructive); font-size: 12px; font-weight: 600; }
+.reorder-placeholder { background: var(--accent); color: var(--accent-foreground); }
 .drag-ghost { position: fixed; z-index: 1000; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 16px; background: var(--card); box-shadow: 0 18px 52px oklch(0 0 0 / .16); pointer-events: none; transform: rotate(-3deg) scale(1.025); }
 .drag-ghost strong { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .task-row > div { min-width: 0; flex: 1; }

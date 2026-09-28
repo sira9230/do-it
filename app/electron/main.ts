@@ -376,6 +376,17 @@ ipcMain.handle('task:priority', async (_event, id: string, priority: Priority) =
   await persist();
   return item;
 });
+ipcMain.handle('task:reorder', async (_event, ids: string[]) => {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const visibleIds = state.tasks.filter((task) => task.status !== 'done' && task.plannedDate === today).map((task) => task.id);
+  if (!Array.isArray(ids) || ids.length !== visibleIds.length || new Set(ids).size !== ids.length || ids.some((id) => !visibleIds.includes(id))) {
+    throw new Error('할 일 목록이 바뀌었어요. 다시 드래그해주세요.');
+  }
+  const visible = new Set(ids);
+  state.taskOrder = [...ids, ...state.taskOrder.filter((id) => !visible.has(id))];
+  await persist();
+});
 ipcMain.handle('task:delete', async (_event, id: string) => {
   const item = state.tasks.find((candidate) => candidate.id === id);
   if (!item) throw new Error('삭제할 할 일을 찾을 수 없습니다.');

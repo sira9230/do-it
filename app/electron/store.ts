@@ -5,6 +5,7 @@ import type { AppState, Priority, Task } from './types.js';
 
 const defaults: AppState = {
   tasks: [],
+  taskOrder: [],
   events: [],
   settings: {
     alwaysOnTop: true,
@@ -37,6 +38,7 @@ export async function load(): Promise<AppState> {
       tasks: Array.isArray(raw.tasks)
         ? raw.tasks.map((item) => ({ ...item, reminderAt: item.reminderAt ?? null }))
         : [],
+      taskOrder: Array.isArray(raw.taskOrder) ? raw.taskOrder.filter((id): id is string => typeof id === 'string') : [],
       events: Array.isArray(raw.events) ? raw.events : [],
       settings: { ...defaults.settings, ...raw.settings },
       sync: { ...defaults.sync, ...raw.sync },

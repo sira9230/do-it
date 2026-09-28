@@ -21,6 +21,7 @@ const priorityMeta: Record<Priority, { label: string; meaning: string }> = {
 
 const emptyState: AppState = {
   tasks: [],
+  taskOrder: [],
   events: [],
   settings: {
     alwaysOnTop: true,
@@ -78,8 +79,8 @@ function formatReminder(value: string) {
   }).format(new Date(value));
 }
 
-function Bosongi() {
-  return <div className="bosongi" aria-hidden="true"><img src="./assets/bosongi-face.png" alt="" /></div>;
+function Bosongi({ animated = false }: { animated?: boolean }) {
+  return <div className={`bosongi ${animated ? 'bosongi-animated' : ''}`} aria-hidden="true"><img src="./assets/bosongi-face.png" alt="" />{animated ? <img className="bosongi-blink" src="./assets/bosongi-face-blink.png" alt="" /> : null}</div>;
 }
 
 function TaskCheckbox({ task, onToggle }: { task: Task; onToggle: (id: string) => void }) {
@@ -116,17 +117,19 @@ function PrioritySelector({ task, onChange }: { task: Task; onChange: (id: strin
   );
 }
 
-function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragFinish }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void; onDragFinish?: () => void }) {
+function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onReorder, onDragFinish }: { task: Task; onToggle: (id: string) => void; onPriority: (id: string, priority: Priority) => void; onEdit: (id: string) => void; onDelete?: (id: string) => void; onReorder?: (id: string, pointerY: number) => void; onDragFinish?: () => void }) {
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
+  const [dragIntent, setDragIntent] = useState<'delete' | 'reorder'>('reorder');
   function finishDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
     onDragFinish?.();
-    if (onDelete && Math.hypot(info.offset.x, info.offset.y) > 115) onDelete(task.id);
+    if (onDelete && Math.abs(info.offset.x) > 115 && Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15) onDelete(task.id);
+    else if (onReorder && Math.abs(info.offset.y) > 12) onReorder(task.id, info.point.y);
     setDragPoint(null);
   }
   return (
-    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 390, damping: 34 }} className="task-slot">
-      {dragPoint ? <div className="delete-placeholder"><Trash2 className="size-4" /><span>놓으면 삭제</span></div> : null}
-      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onDragStart={(_event, info) => setDragPoint(info.point)} onDrag={(_event, info) => setDragPoint(info.point)} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint ? 'dragging-source' : ''}`}>
+    <motion.div layout="position" initial={{ opacity: 0, y: 18, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 390, damping: 34 }} className="task-slot" data-task-id={task.id}>
+      {dragPoint ? <div className={`delete-placeholder ${dragIntent === 'reorder' ? 'reorder-placeholder' : ''}`}>{dragIntent === 'delete' ? <Trash2 className="size-4" /> : <GripHorizontal className="size-4" />}<span>{dragIntent === 'delete' ? '놓으면 삭제' : '위아래로 옮겨 순서 변경'}</span></div> : null}
+      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onDragStart={(_event, info) => setDragPoint(info.point)} onDrag={(_event, info) => { setDragPoint(info.point); setDragIntent(Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15 && Math.abs(info.offset.x) > 24 ? 'delete' : 'reorder'); }} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint ? 'dragging-source' : ''}`}>
       <TaskCheckbox task={task} onToggle={onToggle} />
       <div>
         <div className="title-line">
@@ -333,9 +336,17 @@ export function App() {
     return () => { unsubscribe(); window.clearInterval(timer); };
   }, []);
 
-  const remaining = useMemo(() => state.tasks
-    .filter((task) => task.status !== 'done' && task.plannedDate === localDate() && !deletingIds.includes(task.id))
-    .toSorted((a, b) => a.priority.localeCompare(b.priority) || a.createdAt.localeCompare(b.createdAt)), [state.tasks, deletingIds]);
+  const remaining = useMemo(() => {
+    const positions = new Map(state.taskOrder.map((id, index) => [id, index]));
+    return state.tasks
+      .filter((task) => task.status !== 'done' && task.plannedDate === localDate() && !deletingIds.includes(task.id))
+      .toSorted((a, b) => {
+        const aPosition = positions.get(a.id);
+        const bPosition = positions.get(b.id);
+        if (aPosition !== undefined || bPosition !== undefined) return (aPosition ?? Infinity) - (bPosition ?? Infinity);
+        return a.priority.localeCompare(b.priority) || a.createdAt.localeCompare(b.createdAt);
+      });
+  }, [state.tasks, state.taskOrder, deletingIds]);
   const completed = useMemo(() => state.tasks.filter((task) => task.status === 'done' && !deletingIds.includes(task.id)), [state.tasks, deletingIds]);
   const meeting = state.settings.meetingNoticeEnabled ? meetingNotice(state.events, now) : null;
   const todayNotionPages = state.events.filter((event) => event.id.startsWith('notion:') && localDate(new Date(event.startAt)) === localDate(now));
@@ -376,6 +387,25 @@ export function App() {
     setUndoTask(null);
     try { await window.doit.restoreTask(task); }
     catch (cause) { setUndoTask(task); window.alert(cause instanceof Error ? cause.message : '할 일을 되돌리지 못했어요.'); }
+  }
+
+  function reorderTask(id: string, pointerY: number) {
+    const dragged = remaining.find((task) => task.id === id);
+    if (!dragged) return;
+    const others = remaining.filter((task) => task.id !== id);
+    const slots = [...document.querySelectorAll<HTMLElement>('.list .task-slot')];
+    const insertAt = others.findIndex((task) => {
+      const slot = slots.find((element) => element.dataset.taskId === task.id);
+      if (!slot) return false;
+      const bounds = slot.getBoundingClientRect();
+      return pointerY < bounds.top + bounds.height / 2;
+    });
+    const reordered = [...others];
+    reordered.splice(insertAt < 0 ? others.length : insertAt, 0, dragged);
+    if (reordered.every((task, index) => task.id === remaining[index]?.id)) return;
+    void window.doit.reorderTasks(reordered.map((task) => task.id)).catch((cause) => {
+      window.alert(cause instanceof Error ? cause.message : '순서를 바꾸지 못했어요.');
+    });
   }
 
   function open(next: 'home' | 'add' | 'settings' = 'home') {
@@ -446,8 +476,7 @@ export function App() {
       {!expanded ? (
         <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .84 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 27 }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag}>
           <AnimatePresence initial={false}>
-            {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: [0, 37, 69][index], scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event)} aria-label={`${task.title} · 할 일 목록 열기`}>
-              {index === 0 ? <Bosongi /> : null}
+            {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: [0, 34, 65][index], scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event)} aria-label={`${task.title} · 할 일 목록 열기`}>
               <div className="preview-content">
                 {index === 0 && meeting ? <div className="preview-meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
                 <div className="preview-task"><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{state.settings.privacyMode ? '할 일' : task.title}</strong></div>
@@ -455,12 +484,12 @@ export function App() {
               {index === 0 ? <Chevron /> : null}
             </motion.button>)}
           </AnimatePresence>
-          {!remaining.length ? <button type="button" className="preview-card current preview-empty interactive" onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event, 'add')}><Bosongi /><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
+          {!remaining.length ? <button type="button" className="preview-card current preview-empty interactive" onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event, 'add')}><span>오늘 할 일을 추가해볼까요?</span><Chevron /></button> : null}
         </motion.div>
       ) : (
         <motion.div className="expanded-inner" initial={{ opacity: 0, scale: .95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 270, damping: 24, mass: .9 }}>
           <header>
-            <div className="header-leading"><Button variant="ghost" className="brand interactive" onClick={collapse}><Bosongi /><span>Do it</span></Button></div>
+            <div className="header-leading"><Button variant="ghost" className="brand interactive" aria-label="위젯 접기" onClick={collapse}><Bosongi animated /></Button></div>
             <div><div className="window-grip" title="위젯 위치 이동" aria-label="위젯 위치 이동"><GripHorizontal className="size-4" /></div><Button variant="ghost" size="icon" className="icon interactive" aria-label="설정" onClick={() => setPage('settings')}><Settings2 className="size-4" /></Button><Button variant="ghost" size="icon" className="icon interactive" aria-label="접기" onClick={collapse}><Chevron up /></Button></div>
           </header>
           {page === 'add' ? <AddTask onClose={() => setPage('home')} notionPages={todayNotionPages} /> : page === 'edit' && editingTask ? <EditTask key={editingTask.id} task={editingTask} onClose={() => setPage('home')} /> : page === 'settings' ? <SettingsPage state={state} onBack={() => setPage('home')} /> : (
@@ -468,8 +497,8 @@ export function App() {
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
               <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="add-trigger" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
-              <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
-              {!remaining.length ? <div className="all-done"><Bosongi /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
+              <div className="list"><AnimatePresence initial={false}>{remaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onReorder={reorderTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
+              {!remaining.length ? <div className="all-done"><Bosongi animated /><strong>{state.tasks.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
               {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}
               <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="secondary" className="undo-action" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
             </section>
