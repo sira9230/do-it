@@ -27,6 +27,9 @@ let expansionOrigin: { collapsedX: number; collapsedY: number; expandedX: number
 let tray: Tray | null = null;
 let state: AppState;
 let quitting = false;
+let taskPointerActive = false;
+let taskDragActive = false;
+let lastTaskDragAt = 0;
 let positionSaveTimer: NodeJS.Timeout | null = null;
 let syncTimer: NodeJS.Timeout | null = null;
 const reminderTimers = new Map<string, NodeJS.Timeout>();
@@ -190,6 +193,13 @@ async function createWindow() {
       widgetWindow?.hide();
       hoverWindow?.hide();
     }
+  });
+  widgetWindow.on('blur', () => {
+    setTimeout(() => {
+      if (windowExpanded && widgetWindow && !widgetWindow.isFocused() && !taskPointerActive && !taskDragActive && Date.now() - lastTaskDragAt > 800) {
+        widgetWindow.webContents.send('window:outside-click');
+      }
+    }, 120);
   });
   widgetWindow.on('move', () => {
     positionHoverWindow();
@@ -519,6 +529,16 @@ ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
   rescheduleAllReminders();
   await persist();
   return state.settings;
+});
+ipcMain.handle('window:task-interaction', (_event, phase: 'down' | 'up' | 'dragStart' | 'dragEnd') => {
+  if (phase === 'down') taskPointerActive = true;
+  if (phase === 'up') taskPointerActive = false;
+  if (phase === 'dragStart') taskDragActive = true;
+  if (phase === 'dragEnd') {
+    taskPointerActive = false;
+    taskDragActive = false;
+    lastTaskDragAt = Date.now();
+  }
 });
 ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('app:check-update', async () => {

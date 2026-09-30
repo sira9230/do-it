@@ -131,9 +131,9 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragStart, on
     setDragPoint(null);
   }
   return (
-    <motion.div initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 310, damping: 28 }} className="task-slot" data-task-id={task.id}>
+    <motion.div initial={false} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, x: 90, scale: .94, height: 0, marginTop: 0 }} transition={{ type: 'spring', stiffness: 310, damping: 28 }} className="task-slot" data-task-id={task.id}>
       {dragPoint ? <div className={`delete-placeholder ${dragIntent === 'reorder' ? 'reorder-placeholder' : ''}`}>{dragIntent === 'delete' ? <Trash2 className="size-4" /> : <GripHorizontal className="size-4" />}<span>{dragIntent === 'delete' ? '놓으면 삭제' : '위아래로 옮겨 순서 변경'}</span></div> : null}
-      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onClick={(event) => event.stopPropagation()} onDragStart={(_event, info) => { setSettling(true); setDragPoint(info.point); onDragStart?.(task.id); }} onDrag={(_event, info) => { setDragPoint(info.point); setDragIntent(Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15 && Math.abs(info.offset.x) > 24 ? 'delete' : 'reorder'); onDragMove?.(task.id, info.point.y, info.offset.x, info.offset.y); }} onDragEnd={finishDrag} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint || settling ? 'dragging-source' : ''}`}>
+      <motion.div drag={Boolean(onDelete)} dragSnapToOrigin dragMomentum={false} onClick={(event) => event.stopPropagation()} onPointerDownCapture={() => { void window.doit.setTaskInteraction('down'); }} onPointerUpCapture={() => { void window.doit.setTaskInteraction('up'); }} onPointerCancelCapture={() => { void window.doit.setTaskInteraction('up'); }} onDragStart={(_event, info) => { void window.doit.setTaskInteraction('dragStart'); setSettling(true); setDragPoint(info.point); onDragStart?.(task.id); }} onDrag={(_event, info) => { setDragPoint(info.point); setDragIntent(Math.abs(info.offset.x) > Math.abs(info.offset.y) * 1.15 && Math.abs(info.offset.x) > 24 ? 'delete' : 'reorder'); onDragMove?.(task.id, info.point.y, info.offset.x, info.offset.y); }} onDragEnd={(event, info) => { void window.doit.setTaskInteraction('dragEnd'); finishDrag(event, info); }} className={`task-row ${task.status === 'done' ? 'completed' : ''} ${dragPoint || settling ? 'dragging-source' : ''}`}>
       <TaskCheckbox task={task} onToggle={onToggle} />
       <div>
         <div className="title-line">
@@ -154,7 +154,7 @@ function TaskRow({ task, onToggle, onPriority, onEdit, onDelete, onDragStart, on
           : null}
       </div>
       </motion.div>
-      {createPortal(<AnimatePresence onExitComplete={() => setSettling(false)}>{dragPoint ? <motion.div key="drag-preview" className="drag-ghost" initial={{ scale: 1, opacity: 1 }} animate={{ scale: .96, opacity: 1 }} exit={{ scale: 1, opacity: 0 }} transition={{ duration: .16, ease: 'easeOut' }} style={{ left: dragPoint.x - Math.min(320, window.innerWidth - 40) / 2, top: dragPoint.y - 30, width: Math.min(320, window.innerWidth - 40) }}><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></motion.div> : null}</AnimatePresence>, document.body)}
+      {createPortal(<AnimatePresence onExitComplete={() => setSettling(false)}>{dragPoint ? <motion.div key="drag-preview" className="drag-ghost" initial={{ scale: 1.025, rotate: -3, opacity: 1 }} animate={{ scale: 1.025, rotate: -3, opacity: 1 }} exit={{ scale: 1.025, rotate: -3, opacity: 0 }} transition={{ duration: .1, ease: 'easeOut' }} style={{ left: dragPoint.x - Math.min(320, window.innerWidth - 40) / 2, top: dragPoint.y - 30, width: Math.min(320, window.innerWidth - 40) }}><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></motion.div> : null}</AnimatePresence>, document.body)}
     </motion.div>
   );
 }
@@ -359,7 +359,7 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
           <span className="archive-task-title"><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong><Chevron up={expandedArchiveId === task.id} /></span>
           <time dateTime={task.createdAt}>앱에 추가한 날짜 · {new Date(task.createdAt).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</time>
         </button>
-        <Button variant="ghost" size="xs" className="archive-notion-trigger" onClick={() => { setExpandedArchiveId(task.id); setArchivePageId(''); setArchiveMessage(''); }}>Notion에 추가하기</Button>
+        <Button variant="link" className="source-link archive-notion-trigger" onClick={() => { setExpandedArchiveId(task.id); setArchivePageId(''); setArchiveMessage(''); }}>Notion에 추가하기 <ExternalLink className="size-3" /></Button>
         {expandedArchiveId === task.id ? <div className="archive-task-details">
           {task.summary ? <p>{task.summary}</p> : null}
           {notionPages.length ? <div className="archive-transfer">
