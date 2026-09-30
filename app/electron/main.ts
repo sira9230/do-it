@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, Notification, screen, shell, Tray } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTask, load, save } from './store.js';
@@ -27,6 +27,8 @@ let expansionOrigin: { collapsedX: number; collapsedY: number; expandedX: number
 let tray: Tray | null = null;
 let state: AppState;
 let quitting = false;
+let taskDragging = false;
+let lastTaskDragAt = 0;
 let positionSaveTimer: NodeJS.Timeout | null = null;
 let syncTimer: NodeJS.Timeout | null = null;
 const reminderTimers = new Map<string, NodeJS.Timeout>();
@@ -192,7 +194,7 @@ async function createWindow() {
     }
   });
   widgetWindow.on('blur', () => {
-    if (windowExpanded) widgetWindow?.webContents.send('window:outside-click');
+    if (windowExpanded && !taskDragging && Date.now() - lastTaskDragAt > 800) widgetWindow?.webContents.send('window:outside-click');
   });
   widgetWindow.on('move', () => {
     positionHoverWindow();
@@ -522,6 +524,28 @@ ipcMain.handle('settings:update', async (_event, patch: Partial<Settings>) => {
   rescheduleAllReminders();
   await persist();
   return state.settings;
+});
+ipcMain.handle('window:task-dragging', (_event, dragging: boolean) => {
+  taskDragging = dragging;
+  if (!dragging) lastTaskDragAt = Date.now();
+});
+ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('app:check-update', async () => {
+  const response = await net.fetch('https://api.github.com/repos/sira9230/do-it/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'doit-widget-updater' },
+  });
+  if (!response.ok) throw new Error('업데이트 정보를 확인하지 못했어요. 잠시 후 다시 시도해주세요.');
+  const release = await response.json() as { tag_name?: string; assets?: Array<{ browser_download_url?: string; name?: string }> };
+  const latestVersion = (release.tag_name ?? '').replace(/^v/, '');
+  if (!/^\d+\.\d+\.\d+$/.test(latestVersion)) throw new Error('업데이트 버전 정보가 올바르지 않아요.');
+  const current = app.getVersion().split('.').map(Number);
+  const latest = latestVersion.split('.').map(Number);
+  const updateAvailable = latest[0] > current[0] || (latest[0] === current[0] && (latest[1] > current[1] || (latest[1] === current[1] && latest[2] > current[2])));
+  if (!updateAvailable) return { updateAvailable: false, latestVersion, downloadOpened: false };
+  const asset = release.assets?.find((item) => item.name?.endsWith('.dmg') && item.browser_download_url?.startsWith('https://github.com/sira9230/do-it/releases/download/'));
+  if (!asset?.browser_download_url) throw new Error('새 버전의 설치 파일을 찾지 못했어요.');
+  await shell.openExternal(asset.browser_download_url);
+  return { updateAvailable: true, latestVersion, downloadOpened: true };
 });
 ipcMain.handle('window:expand', async (_event, expanded: boolean) => {
   if (!widgetWindow) return;

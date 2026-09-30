@@ -290,7 +290,19 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
   const [deviceCode, setDeviceCode] = useState('');
   const [busy, setBusy] = useState<'notion' | 'microsoft' | 'sync' | null>(null);
   const [error, setError] = useState('');
+  const [appVersion, setAppVersion] = useState('…');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState('');
   const localCompleted = localCompletedHistory(state.tasks);
+  useEffect(() => { void window.doit.getAppVersion().then(setAppVersion); }, []);
+  async function checkUpdate() {
+    setCheckingUpdate(true); setUpdateMessage('');
+    try {
+      const result = await window.doit.checkForUpdates();
+      setUpdateMessage(result.updateAvailable ? `v${result.latestVersion} 설치 파일을 열었어요. 다운로드 후 설치하고 앱을 다시 실행해주세요.` : '최신 버전이에요.');
+    } catch (cause) { setUpdateMessage(cause instanceof Error ? cause.message : '업데이트 확인에 실패했어요.'); }
+    finally { setCheckingUpdate(false); }
+  }
   async function connectNotion() {
     setBusy('notion'); setError('');
     try {
@@ -324,6 +336,8 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
       <Toggle label="할 일 푸시 리마인드" checked={state.settings.taskRemindersEnabled} onChange={(value) => update({ taskRemindersEnabled: value })} />
       <Button variant="secondary" className="position-reset" onClick={() => void window.doit.resetWindowPosition()}>상단 중앙으로 위치 초기화</Button>
       <p className="settings-note">위젯의 빈 공간이나 상단 헤더를 드래그해 원하는 곳으로 옮길 수 있어요.</p>
+      <div className="app-update"><span><strong>앱 버전</strong><small>v{appVersion}</small></span><Button variant="secondary" onClick={() => void checkUpdate()} disabled={checkingUpdate}>{checkingUpdate ? '확인 중…' : '업데이트 확인'}</Button></div>
+      {updateMessage ? <p className="settings-note" role="status">{updateMessage}</p> : null}
       <h3>앱에만 저장한 완료 기록 <span className="archive-count">{localCompleted.length}개</span></h3>
       {localCompleted.length ? <div className="local-archive">{localCompleted.map((task) => <div className="archive-task" key={task.id}>
         <div><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></div>
@@ -365,6 +379,7 @@ export function App() {
   const dragOrderRef = useRef<string[] | null>(null);
   const dragPositionRef = useRef<{ id: string; y: number; xOffset: number; yOffset: number } | null>(null);
   const lastDragAt = useRef(0);
+  const taskDragging = useRef(false);
   const previewDrag = useRef<{ source: EventTarget; screenX: number; screenY: number; windowX: number; windowY: number; moved: boolean } | null>(null);
   const suppressPreviewClick = useRef(false);
   const collapsingRef = useRef(false);
@@ -464,6 +479,8 @@ export function App() {
   }
 
   function startTaskDrag() {
+    taskDragging.current = true;
+    void window.doit.setTaskDragging(true);
     const ids = remaining.map((task) => task.id);
     dragOrderRef.current = ids;
     setDragOrder(ids);
@@ -543,7 +560,7 @@ export function App() {
   }
 
   function handleSurfaceClick(event: React.MouseEvent<HTMLElement>) {
-    if (!expanded || page === 'add' || page === 'edit' || Date.now() - lastDragAt.current < 600) return;
+    if (!expanded || page === 'add' || page === 'edit' || taskDragging.current || Date.now() - lastDragAt.current < 800) return;
     const target = event.target;
     if (!(target instanceof Element) || target.closest('button, input, textarea, select, a, [role="checkbox"], [role="menuitem"], [contenteditable="true"]')) return;
     collapse();
@@ -598,7 +615,9 @@ export function App() {
 
   useEffect(() => {
     if (!expanded) return;
-    return window.doit.onOutsideClick(() => collapse());
+    return window.doit.onOutsideClick(() => {
+      if (!taskDragging.current && Date.now() - lastDragAt.current >= 800) collapse();
+    });
   }, [expanded, page, draftDirty]);
 
   const toggle = (id: string) => void window.doit.toggleTask(id);
@@ -633,9 +652,9 @@ export function App() {
               <div className="timeline"><h2>오늘 일정</h2>{todayEvents.length ? <div className="timeline-cards" role="list">{todayEvents.map((event) => <div className="timeline-card" role="listitem" key={event.id}><time>{formatTimeRange(event)}</time><strong>{state.settings.privacyMode ? '회의 일정' : event.title}</strong></div>)}</div> : <p>오늘 일정이 없어요.</p>}</div>
               {meeting ? <div className="meeting-card"><span>{new Date(meeting.startAt) <= now ? '회의 중' : '곧 시작하는 회의'}</span><strong>{formatTimeRange(meeting)} · {state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
               <div className="heading"><h1>남은 할 일 <span className="task-count">{remaining.length}개</span></h1><Button variant="ghost" className="add-trigger" onClick={() => setPage('add')}><Plus className="size-4" /> 추가</Button></div>
-              <div className="list"><AnimatePresence initial={false}>{displayedRemaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragStart={startTaskDrag} onDragMove={moveTaskDrag} onReorder={reorderTask} onDragFinish={() => { lastDragAt.current = Date.now(); }} />)}</AnimatePresence></div>
+              <div className="list"><AnimatePresence initial={false}>{displayedRemaining.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragStart={startTaskDrag} onDragMove={moveTaskDrag} onReorder={reorderTask} onDragFinish={() => { taskDragging.current = false; lastDragAt.current = Date.now(); void window.doit.setTaskDragging(false); }} />)}</AnimatePresence></div>
               {!remaining.length ? <div className="all-done"><Bosongi animated /><strong>{completed.length ? '오늘 할 일을 모두 마쳤어요' : '오늘 할 일이 아직 없어요'}</strong><Button variant="secondary" onClick={() => setPage('add')}>할 일 추가하기</Button></div> : null}
-              {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} />) : null}</AnimatePresence></div> : null}
+              {completed.length ? <div className="completed-list"><Button variant="ghost" onClick={() => setShowCompleted((value) => !value)}>완료한 일 {completed.length}개 <Chevron up={showCompleted} /></Button><AnimatePresence initial={false}>{showCompleted ? completed.map((task) => <TaskRow key={task.id} task={task} onToggle={toggle} onPriority={changePriority} onEdit={editTask} onDelete={deleteTask} onDragStart={() => { taskDragging.current = true; void window.doit.setTaskDragging(true); }} onDragFinish={() => { taskDragging.current = false; lastDragAt.current = Date.now(); void window.doit.setTaskDragging(false); }} />) : null}</AnimatePresence></div> : null}
               <AnimatePresence>{undoTask ? <motion.div className="undo-toast" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} role="status"><span>할 일을 삭제했어요</span><Button variant="secondary" className="undo-action" onClick={() => void restoreTask()}>되돌리기</Button></motion.div> : null}</AnimatePresence>
             </section>
           )}

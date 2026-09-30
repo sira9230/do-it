@@ -246,6 +246,9 @@ button { cursor: pointer; }
 .toggle strong, .connection strong { font-weight: 500; }
 .position-reset { width: 100%; min-height: 36px; margin-top: 14px; }
 .settings-note { margin: 8px 2px 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.app-update { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding: 12px 2px; border-top: 1px solid var(--border); }
+.app-update span { display: flex; flex-direction: column; gap: 3px; }
+.app-update small { color: var(--muted-foreground); font-size: 11px; }
 .connection span { display: flex; flex-direction: column; gap: 3px; }
 .connection small { color: var(--muted-foreground); font-size: 11px; }
 .connection-form { display: flex; gap: 6px; margin: 9px 0 15px; }

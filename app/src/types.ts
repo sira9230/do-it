@@ -55,6 +55,9 @@ export interface AppState {
 }
 
 export interface DoitAPI {
+  getAppVersion(): Promise<string>;
+  checkForUpdates(): Promise<{ updateAvailable: boolean; latestVersion: string; downloadOpened: boolean }>;
+  setTaskDragging(dragging: boolean): Promise<void>;
   getState(): Promise<AppState>;
   createTask(input: {
     title: string;
