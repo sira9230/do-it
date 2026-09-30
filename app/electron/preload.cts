@@ -4,7 +4,6 @@ import type { AppState, Priority, Settings, Task } from './types.js';
 contextBridge.exposeInMainWorld('doit', {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   checkForUpdates: (): Promise<{ updateAvailable: boolean; latestVersion: string; downloadOpened: boolean }> => ipcRenderer.invoke('app:check-update'),
-  setTaskDragging: (dragging: boolean): Promise<void> => ipcRenderer.invoke('window:task-dragging', dragging),
   getState: (): Promise<AppState> => ipcRenderer.invoke('state:get'),
   createTask: (input: {
     title: string;
