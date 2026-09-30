@@ -293,7 +293,12 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
   const [appVersion, setAppVersion] = useState('…');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
+  const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null);
+  const [archivePageId, setArchivePageId] = useState('');
+  const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
+  const [archiveMessage, setArchiveMessage] = useState('');
   const localCompleted = localCompletedHistory(state.tasks);
+  const notionPages = state.events.filter((event) => event.id.startsWith('notion:')).toSorted((a, b) => a.startAt.localeCompare(b.startAt));
   useEffect(() => { void window.doit.getAppVersion().then(setAppVersion); }, []);
   async function checkUpdate() {
     setCheckingUpdate(true); setUpdateMessage('');
@@ -302,6 +307,17 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
       setUpdateMessage(result.updateAvailable ? `v${result.latestVersion} 설치 파일을 열었어요. 다운로드 후 설치하고 앱을 다시 실행해주세요.` : '최신 버전이에요.');
     } catch (cause) { setUpdateMessage(cause instanceof Error ? cause.message : '업데이트 확인에 실패했어요.'); }
     finally { setCheckingUpdate(false); }
+  }
+  async function addArchiveToNotion(task: Task) {
+    if (!archivePageId) { setArchiveMessage('추가할 Notion 회의록을 선택해주세요.'); return; }
+    setArchiveBusyId(task.id); setArchiveMessage('');
+    try {
+      await window.doit.updateTask({ id: task.id, title: task.title, summary: task.summary, notionPageId: archivePageId });
+      setExpandedArchiveId(null);
+      setArchivePageId('');
+      setArchiveMessage('완료한 할 일을 Notion 회의록에 추가했어요.');
+    } catch (cause) { setArchiveMessage(cause instanceof Error ? cause.message : 'Notion에 추가하지 못했어요.'); }
+    finally { setArchiveBusyId(null); }
   }
   async function connectNotion() {
     setBusy('notion'); setError('');
@@ -336,13 +352,24 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
       <Toggle label="할 일 푸시 리마인드" checked={state.settings.taskRemindersEnabled} onChange={(value) => update({ taskRemindersEnabled: value })} />
       <Button variant="secondary" className="position-reset" onClick={() => void window.doit.resetWindowPosition()}>상단 중앙으로 위치 초기화</Button>
       <p className="settings-note">위젯의 빈 공간이나 상단 헤더를 드래그해 원하는 곳으로 옮길 수 있어요.</p>
-      <div className="app-update"><span><strong>앱 버전</strong><small>v{appVersion}</small></span><Button variant="secondary" onClick={() => void checkUpdate()} disabled={checkingUpdate}>{checkingUpdate ? '확인 중…' : '업데이트 확인'}</Button></div>
-      {updateMessage ? <p className="settings-note" role="status">{updateMessage}</p> : null}
-      <h3>앱에만 저장한 완료 기록 <span className="archive-count">{localCompleted.length}개</span></h3>
+      <h3>완료 기록 <span className="archive-count">{localCompleted.length}개</span></h3>
+      <p className="settings-note">앱에만 저장된 완료 항목이에요.</p>
       {localCompleted.length ? <div className="local-archive">{localCompleted.map((task) => <div className="archive-task" key={task.id}>
-        <div><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong></div>
-        <time dateTime={task.createdAt}>생성 {new Date(task.createdAt).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\.\s*/g, '.').replace(/\.$/, '')}</time>
-      </div>)}</div> : <p className="settings-note">앱에만 저장하고 완료한 할 일은 여기에 모여요.</p>}
+        <button type="button" className="archive-task-toggle" aria-expanded={expandedArchiveId === task.id} onClick={() => { setExpandedArchiveId(expandedArchiveId === task.id ? null : task.id); setArchivePageId(''); setArchiveMessage(''); }}>
+          <span className="archive-task-title"><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{task.title}</strong><Chevron up={expandedArchiveId === task.id} /></span>
+          <time dateTime={task.createdAt}>앱에 추가한 날짜 · {new Date(task.createdAt).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</time>
+        </button>
+        <Button variant="ghost" size="xs" className="archive-notion-trigger" onClick={() => { setExpandedArchiveId(task.id); setArchivePageId(''); setArchiveMessage(''); }}>Notion에 추가하기</Button>
+        {expandedArchiveId === task.id ? <div className="archive-task-details">
+          {task.summary ? <p>{task.summary}</p> : null}
+          {notionPages.length ? <div className="archive-transfer">
+            <label htmlFor={`archive-page-${task.id}`}>추가할 Notion 회의록</label>
+            <select id={`archive-page-${task.id}`} value={archivePageId} onChange={(event) => setArchivePageId(event.target.value)}><option value="">회의록 선택</option>{notionPages.map((page) => <option key={page.id} value={page.id.slice('notion:'.length)}>{new Date(page.startAt).toLocaleDateString('ko-KR')} · {page.title}</option>)}</select>
+            <Button size="sm" onClick={() => void addArchiveToNotion(task)} disabled={archiveBusyId !== null || !archivePageId}>{archiveBusyId === task.id ? '추가 중…' : '선택한 회의록에 추가'}</Button>
+          </div> : <p className="settings-note">연결된 Notion 회의록이 없어요. 먼저 Notion을 연결하거나 동기화해주세요.</p>}
+        </div> : null}
+      </div>)}</div> : <p className="settings-note">앱에만 저장하고 완료한 할 일이 아직 없어요.</p>}
+      {archiveMessage ? <p className="settings-note" role="status">{archiveMessage}</p> : null}
       <h3>연동 및 동기화 관리</h3>
       <div className="connection"><span><strong>Notion 회의록 DB</strong><small>{state.sync.notion === 'synced' ? '연결됨 · 회의 일정 표시' : state.sync.notion === 'error' ? '동기화 오류' : '연결 안 됨'}</small></span></div>
       <p className="settings-note">회의록 DB의 Name·날짜 속성과 오늘 페이지의 체크박스를 읽어요. <Button variant="link" className="help-link" onClick={() => void window.doit.openHelp('notion')}>연결 도움말 ↗</Button></p>
@@ -356,6 +383,9 @@ function SettingsPage({ state, onBack }: { state: AppState; onBack: () => void }
       {error ? <p className="connection-error" role="alert">{error}</p> : null}
       <Button variant="secondary" className="position-reset" onClick={() => void refresh()} disabled={busy !== null}>지금 동기화</Button>
       <div className="sync"><span>마지막 동기화</span><strong>{state.sync.lastSuccessAt ? new Date(state.sync.lastSuccessAt).toLocaleString('ko-KR') : '아직 없음'}</strong></div>
+      <h3>앱 정보</h3>
+      <div className="app-update"><span><strong>Do it</strong><small>버전 {appVersion}</small></span><Button variant="secondary" size="xs" onClick={() => void checkUpdate()} disabled={checkingUpdate}>{checkingUpdate ? '확인 중…' : '업데이트 확인'}</Button></div>
+      {updateMessage ? <p className="settings-note" role="status">{updateMessage}</p> : null}
     </section>
   );
 }
@@ -561,7 +591,7 @@ export function App() {
   function handleSurfaceClick(event: React.MouseEvent<HTMLElement>) {
     if (!expanded || page === 'add' || page === 'edit' || taskDragging.current || Date.now() - lastDragAt.current < 800) return;
     const target = event.target;
-    if (!(target instanceof Element) || target.closest('button, input, textarea, select, a, [role="checkbox"], [role="menuitem"], [contenteditable="true"]')) return;
+    if (!(target instanceof Element) || target.closest('button, input, textarea, select, a, .archive-task, [role="checkbox"], [role="menuitem"], [contenteditable="true"]')) return;
     collapse();
   }
 
