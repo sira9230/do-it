@@ -196,7 +196,11 @@ async function createWindow() {
   });
   widgetWindow.on('blur', () => {
     setTimeout(() => {
-      if (windowExpanded && widgetWindow && !widgetWindow.isFocused() && !taskPointerActive && !taskDragActive && Date.now() - lastTaskDragAt > 800) {
+      if (!widgetWindow) return;
+      const pointer = screen.getCursorScreenPoint();
+      const bounds = widgetWindow.getBounds();
+      const pointerInsideWindow = pointer.x >= bounds.x && pointer.x < bounds.x + bounds.width && pointer.y >= bounds.y && pointer.y < bounds.y + bounds.height;
+      if (windowExpanded && !pointerInsideWindow && !widgetWindow.isFocused() && !taskPointerActive && !taskDragActive && Date.now() - lastTaskDragAt > 800) {
         widgetWindow.webContents.send('window:outside-click');
       }
     }, 120);

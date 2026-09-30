@@ -588,13 +588,6 @@ export function App() {
     });
   }
 
-  function handleSurfaceClick(event: React.MouseEvent<HTMLElement>) {
-    if (!expanded || page === 'add' || page === 'edit' || taskDragging.current || Date.now() - lastDragAt.current < 800) return;
-    const target = event.target;
-    if (!(target instanceof Element) || target.closest('button, input, textarea, select, a, .archive-task, [role="checkbox"], [role="menuitem"], [contenteditable="true"]')) return;
-    collapse();
-  }
-
   function closeEditor() {
     if (draftDirty) {
       setDraftNotice(draftWarning);
@@ -655,7 +648,7 @@ export function App() {
   if (!loaded) return <main className="shell loading"><Bosongi /><span>두잇 준비 중…</span></main>;
 
   return <MotionConfig reducedMotion="user">
-    <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${collapsing ? 'morphing-close' : ''} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={handleSurfaceClick}>
+    <main className={`shell ${expanded ? 'expanded' : 'collapsed'} ${collapsing ? 'morphing-close' : ''} ${hovered && !expanded ? 'preview-open' : ''}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       <button type="button" className="widget-close floating-close interactive" aria-label="Do it 종료" title="앱 종료" onClick={(event) => { event.stopPropagation(); if (draftDirty && (page === 'add' || page === 'edit')) setDraftNotice(draftWarning); else void window.doit.quitApp(); }}><X className="size-3" /></button>
       {!expanded ? (
         <motion.div className="collapsed-inner" title="빈 공간을 드래그해 위젯을 옮길 수 있어요" initial={{ opacity: 0, scale: .9, filter: 'blur(2px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} transition={{ scale: { type: 'spring', duration: .3, bounce: .38 }, opacity: { duration: .15 }, filter: { duration: .15 } }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag}>
