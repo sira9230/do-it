@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const WINDOW_WIDTH = 316;
 const EXPANDED_WIDTH = 432;
 const COLLAPSED_HEIGHT = 56;
-const PREVIEW_HEIGHT = 110;
+const PREVIEW_HEIGHT = 96;
 const HOVER_WIDTH = 126;
 const HOVER_HEIGHT = 32;
 const EXPANDED_HEIGHT = 620;
@@ -68,7 +68,7 @@ function animateWidgetBounds(target: { x: number; y: number; width: number; heig
   const window = widgetWindow;
   const start = window.getBounds();
   const startedAt = Date.now();
-  const duration = 420;
+  const duration = 360;
   const version = ++resizeVersion;
   resizingWindow = true;
   window.setResizable(true);

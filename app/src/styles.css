@@ -44,6 +44,8 @@
   --priority-medium-bg: oklch(0.95 0.035 260);
   --priority-low: oklch(0.49 0.14 165);
   --priority-low-bg: oklch(0.94 0.04 165);
+  --progress-ink: oklch(0.52 0.17 78);
+  --progress-bg: oklch(0.95 0.045 78);
 }
 
 @theme inline {
@@ -175,7 +177,7 @@ button { cursor: pointer; }
 .edit-task { width: 24px; height: 24px; flex: 0 0 auto; padding: 0; color: var(--muted-foreground); }
 .edit-task:hover { color: var(--foreground); }
 .notion-status { display: inline-flex; align-items: center; min-height: 18px; margin-top: 7px; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 1.3; }
-.notion-status.in-progress { color: var(--priority-medium); background: var(--priority-medium-bg); }
+.notion-status.in-progress { color: var(--progress-ink); background: var(--progress-bg); }
 .notion-status.done { color: var(--priority-low); background: var(--priority-low-bg); }
 .task-row p { display: -webkit-box; overflow: hidden; margin: 5px 0 0; color: var(--muted-foreground); font-size: 13px; font-weight: 350; line-height: 1.55; overflow-wrap: anywhere; word-break: keep-all; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .task-source { display: flex; align-items: center; gap: 9px; margin-top: 5px; color: var(--muted-foreground); font-size: 11px; }
@@ -218,6 +220,7 @@ button { cursor: pointer; }
 .status-options { display: flex; gap: 7px; margin-top: 7px; }
 .status-options button { flex: 1; min-height: 38px; font-size: 12px; font-weight: 600; }
 .status-options button.selected { color: var(--priority-medium); background: var(--priority-medium-bg); border-color: var(--priority-medium); }
+.status-options button:last-child.selected { color: var(--progress-ink); background: var(--progress-bg); border-color: var(--progress-ink); }
 .destination-options { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
 .destination-options button { max-width: 100%; min-height: 34px; padding: 5px 9px; overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .destination-options button.selected { border-color: var(--primary); color: var(--primary); background: var(--accent); }
