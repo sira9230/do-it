@@ -1,0 +1,82 @@
+name: Publish v0.1.8 macOS release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-macos.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3bc16ccf5d34d206ec3dd193deac142afe08ed57
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify types and tests
+        run: |
+          npm run typecheck
+          npm test
+      - name: Build universal macOS installer
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm run build
+          npx electron-builder --mac dmg --universal --publish never '-c.artifactName=Do.it-${version}.dmg'
+      - name: Save installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: app/release/*.dmg
+          if-no-files-found: error
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_COMMIT: 3bc16ccf5d34d206ec3dd193deac142afe08ed57
+        run: |
+          set -euo pipefail
+          release_version="$(node -p "require('./package.json').version")"
+          test "$release_version" = "0.1.8"
+          release_tag="v${release_version}"
+          installer="release/Do.it-${release_version}.dmg"
+          test -s "$installer"
+          if gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $release_tag already exists; refusing to overwrite it."
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          - 노션 🚨 항목은 중요, 🌀 항목은 천처니로 매핑합니다.
+          - 중요도를 입력하지 않은 항목은 천처니로 처리합니다.
+          - 접힌 위젯의 중요 배지에는 🚨 이모티콘을 표시합니다.
+          - 노션에 할 일을 생성하거나 중요도를 변경할 때 🚨·🌀로 저장합니다.
+
+          macOS Intel 및 Apple Silicon용 통합 DMG입니다. 기존 앱을 종료한 뒤 설치 파일을 열고 Applications의 Do it 앱을 교체해주세요.
+
+          검증: 타입 검사, 테스트 18개, 프로덕션 빌드 통과.
+          NOTES
+          gh release create "$release_tag" "$installer" \
+            --repo "$RELEASE_REPOSITORY" \
+            --target "$RELEASE_COMMIT" \
+            --title "Do it ${release_version}" \
+            --notes-file release-notes.md \
+            --latest
