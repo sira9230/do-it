@@ -362,6 +362,7 @@ ipcMain.handle('task:create', async (_event, input: {
 }) => {
   if (!input.title.trim() || input.title.trim().length > 200) throw new Error('제목은 1~200자로 입력해주세요.');
   if (!['todo', 'in_progress'].includes(input.status)) throw new Error('진행 상태를 선택해주세요.');
+  if (!input.priority) input.priority = 'P3';
   if (!['P1', 'P2', 'P3'].includes(input.priority)) throw new Error('중요도를 선택해주세요.');
   if (input.reminderAt && new Date(input.reminderAt).getTime() <= Date.now()) throw new Error('리마인드는 현재보다 뒤의 시간으로 설정해주세요.');
   const next = createTask({ ...input, title: input.title.trim(), summary: input.summary.trim() });

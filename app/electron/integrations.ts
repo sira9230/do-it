@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CalendarEvent, Priority, Task } from './types.js';
-import { inlinePriority, inlineTaskStatus, isPriorityCode, replaceVisibleTitle, visibleText, writableRichText } from './notion-rich-text.js';
+import { inlinePriority, inlineTaskStatus, replacePriority, replaceVisibleTitle, visibleText, writableRichText } from './notion-rich-text.js';
 import { notionTodoAppendBody } from './notion-task-block.js';
 import type { NotionRichText } from './notion-rich-text.js';
 
@@ -102,7 +102,8 @@ function dateString(value: string) {
 
 function notionPriority(value?: string): Priority {
   if (value === 'red_background' || value === 'red') return 'P1';
-  return 'P2';
+  if (value === 'blue_background' || value === 'blue') return 'P2';
+  return 'P3';
 }
 
 function parseMeetingLine(value: string, day: string, pageId: string, blockId: string): CalendarEvent | null {
@@ -275,15 +276,7 @@ export async function updateNotionTodoPriority(token: string, blockId: string, p
   const color = priority === 'P1' ? 'red_background' : priority === 'P3' ? 'gray_background' : 'blue_background';
   const current = await responseJson<NotionBlock>(`https://api.notion.com/v1/blocks/${blockId}`, { headers: notionHeaders(token) });
   if (current.type !== 'to_do' || !current.to_do) throw new Error('Notion 체크박스를 찾을 수 없습니다.');
-  const richText = current.to_do.rich_text.map((part) => {
-    const writable = writableRichText(part);
-    if (isPriorityCode(part) && writable.text) return { ...writable, text: { ...writable.text, content: writable.text.content.replace(/P[123]|추후 진행/i, priority === 'P3' ? '추후 진행' : priority) } };
-    return writable;
-  });
-  if (!current.to_do.rich_text.some(isPriorityCode)) {
-    richText.push({ type: 'text', text: { content: ' ' } });
-    richText.push({ type: 'text', text: { content: priority === 'P3' ? '추후 진행' : priority }, annotations: { code: true } });
-  }
+  const richText = replacePriority(current.to_do.rich_text, priority);
   await responseJson(`https://api.notion.com/v1/blocks/${blockId}`, {
     method: 'PATCH',
     headers: notionHeaders(token),

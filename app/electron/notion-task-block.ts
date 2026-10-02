@@ -1,7 +1,8 @@
 import type { Priority } from './types.js';
+import { notionPriorityMarker } from './notion-rich-text.js';
 
 export function notionTodoBlock(title: string, summary: string, priority: Priority, checked = false, inProgress = false) {
-  const code = priority === 'P3' ? '추후 진행' : priority;
+  const code = notionPriorityMarker(priority);
   const color = priority === 'P1' ? 'red_background' : priority === 'P3' ? 'gray_background' : 'blue_background';
   return {
     object: 'block',

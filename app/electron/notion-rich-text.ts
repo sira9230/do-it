@@ -9,7 +9,8 @@ export interface NotionRichText {
 }
 
 export function isPriorityCode(part: NotionRichText) {
-  return part.annotations?.code === true && !!part.text && /^(P[123]|추후 진행)$/i.test((part.plain_text ?? part.text.content).trim());
+  const value = (part.plain_text ?? part.text?.content ?? '').trim();
+  return /^(🚨|🌀)$/.test(value) || (part.annotations?.code === true && !!part.text && /^(P[123]|추후 진행|중요|천처니)$/i.test(value));
 }
 
 export function isTaskStatusCode(part: NotionRichText) {
@@ -22,10 +23,13 @@ export function visibleText(parts: NotionRichText[]) {
 }
 
 export function inlinePriority(parts: NotionRichText[]): Priority | null {
+  const text = parts.map((part) => part.plain_text ?? part.text?.content ?? '').join('');
+  if (text.includes('🚨')) return 'P1';
+  if (text.includes('🌀')) return 'P3';
   const code = parts.find(isPriorityCode);
   if (!code) return null;
   const value = (code.plain_text ?? code.text?.content ?? '').trim().toUpperCase();
-  return value === '추후 진행' ? 'P3' : value === 'P1' || value === 'P2' ? value : null;
+  return value === '추후 진행' || value === '천처니' ? 'P3' : value === '중요' ? 'P1' : value === 'P1' || value === 'P2' ? value : null;
 }
 
 export function inlineTaskStatus(parts: NotionRichText[]): '진행중' | '완료' | null {
@@ -76,5 +80,29 @@ export function replaceVisibleTitle(parts: NotionRichText[], nextTitle: string):
     if (last && !/\s$/.test(last) && !/^\s/.test(firstCode)) result.push({ type: 'text', text: { content: ' ' } });
     result.push(...codes);
   }
+  return result;
+}
+
+export function notionPriorityMarker(priority: Priority): string {
+  return priority === 'P1' ? '🚨' : priority === 'P3' ? '🌀' : 'P2';
+}
+
+export function replacePriority(parts: NotionRichText[], priority: Priority): NotionRichText[] {
+  const marker = notionPriorityMarker(priority);
+  let replaced = false;
+  const result = parts.map((part) => {
+    const writable = writableRichText(part);
+    if (!writable.text) return writable;
+    if (isPriorityCode(part)) {
+      replaced = true;
+      return { ...writable, text: { ...writable.text, content: marker } };
+    }
+    if (/[🚨🌀]/u.test(writable.text.content)) {
+      replaced = true;
+      return { ...writable, text: { ...writable.text, content: writable.text.content.replace(/[🚨🌀]/gu, marker) } };
+    }
+    return writable;
+  });
+  if (!replaced) result.push({ type: 'text', text: { content: ' ' } }, { type: 'text', text: { content: marker }, annotations: { code: true } });
   return result;
 }

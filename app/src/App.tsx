@@ -204,14 +204,14 @@ function EditTask({ task, onClose, onSaved, onDirtyChange, notionPages }: { task
 function AddTask({ onClose, onSaved, onDirtyChange, notionPages }: { onClose: () => void; onSaved: () => void; onDirtyChange: (dirty: boolean) => void; notionPages: CalendarEvent[] }) {
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
-  const [priority, setPriority] = useState<Priority>('P2');
+  const [priority, setPriority] = useState<Priority>('P3');
   const [status, setStatus] = useState<'todo' | 'in_progress'>('todo');
   const [reminder, setReminder] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [notionPageId, setNotionPageId] = useState<string | null>(null);
 
-  useEffect(() => onDirtyChange(Boolean(title.trim() || summary.trim() || reminder || priority !== 'P2' || status !== 'todo' || notionPageId)), [title, summary, reminder, priority, status, notionPageId, onDirtyChange]);
+  useEffect(() => onDirtyChange(Boolean(title.trim() || summary.trim() || reminder || priority !== 'P3' || status !== 'todo' || notionPageId)), [title, summary, reminder, priority, status, notionPageId, onDirtyChange]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -244,7 +244,7 @@ function AddTask({ onClose, onSaved, onDirtyChange, notionPages }: { onClose: ()
       <Label>할 일 <span className="required">필수</span><Input autoFocus required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="무엇을 해볼까요?" /></Label>
       <Label>짧은 설명 <span className="optional">선택</span><Textarea maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="필요한 내용을 두세 줄로 적어주세요" /></Label>
       <fieldset>
-        <legend>중요도 <span className="required">필수</span></legend>
+        <legend>중요도</legend>
         <div className="options">
           {(Object.keys(priorityMeta) as Priority[]).map((value) => (
             <Button type="button" variant="outline" aria-pressed={priority === value} className={`priority-option ${value.toLowerCase()} ${priority === value ? 'selected' : ''}`} onClick={() => setPriority(value)} key={value}>
@@ -656,7 +656,7 @@ export function App() {
             {remaining.slice(0, hovered ? 3 : 1).map((task, index) => <motion.button type="button" key={task.id} className={`preview-card interactive ${index === 0 ? 'current' : 'next'}`} initial={{ y: 0, scale: .7, opacity: 0, filter: 'blur(3px)' }} animate={{ y: [0, 34, 60][index], scale: index === 0 ? 1 : index === 1 ? .78 : .72, opacity: 1 - index * .16, filter: 'blur(0px)' }} exit={{ y: -38, scale: .7, opacity: 0, filter: 'blur(2px)' }} transition={{ type: 'spring', stiffness: 420, damping: 29, delay: index * .045 }} style={{ zIndex: 3 - index }} onPointerDown={startPreviewDrag} onPointerMove={movePreview} onPointerUp={finishPreviewDrag} onPointerCancel={finishPreviewDrag} onClick={(event) => openFromPreview(event)} aria-label={`${task.title} · 할 일 목록 열기`}>
               <div className="preview-content">
                 {index === 0 && meeting ? <div className="preview-meeting"><span>{formatTimeRange(meeting)}</span><strong>{state.settings.privacyMode ? '회의 예정' : meeting.title}</strong></div> : null}
-                <div className="preview-task"><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`}>{priorityMeta[task.priority].label}</Badge><strong>{state.settings.privacyMode ? '할 일' : task.title}</strong></div>
+                <div className="preview-task"><Badge variant="secondary" className={`priority ${task.priority.toLowerCase()}`} aria-label={priorityMeta[task.priority].label}>{task.priority === 'P1' ? '🚨' : priorityMeta[task.priority].label}</Badge><strong>{state.settings.privacyMode ? '할 일' : task.title}</strong></div>
               </div>
               {index === 0 ? <Chevron /> : null}
             </motion.button>)}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { inlinePriority, inlineTaskStatus, replaceVisibleTitle, visibleText } from '../dist-electron/notion-rich-text.js';
+import { inlinePriority, inlineTaskStatus, replaceVisibleTitle, replacePriority, visibleText } from '../dist-electron/notion-rich-text.js';
 
 test('editing a Notion task keeps the inline priority code and unchanged formatting', () => {
   const parts = [
@@ -35,4 +35,29 @@ test('editing a task without priority code does not add one', () => {
   const edited = replaceVisibleTitle([{ type: 'text', text: { content: '이전 할 일' }, plain_text: '이전 할 일' }], '새 할 일');
   assert.equal(visibleText(edited), '새 할 일');
   assert.equal(inlinePriority(edited), null);
+});
+
+
+test('Notion emoji markers map to importance with or without code formatting', () => {
+  const text = (content) => ({ type: 'text', text: { content } });
+  assert.equal(inlinePriority([text('🚨')]), 'P1');
+  assert.equal(inlinePriority([text('🌀')]), 'P3');
+  assert.equal(inlinePriority([text('🚨 화면 검토')]), 'P1');
+  assert.equal(inlinePriority([text('🌀 화면 검토')]), 'P3');
+  assert.equal(inlinePriority([text('화면 검토')]), null);
+  assert.equal(visibleText([text('화면 검토 '), text('🚨')]), '화면 검토');
+});
+
+test('changing priority replaces emoji and legacy markers and preserves formatting', () => {
+  const parts = [{ type: 'text', text: { content: '🚨 화면 검토' }, annotations: { bold: true }, plain_text: '🚨 화면 검토' }];
+  const updated = replacePriority(parts, 'P3');
+  assert.equal(inlinePriority(updated), 'P3');
+  assert.equal(updated[0].text.content, '🌀 화면 검토');
+  assert.equal(updated[0].annotations.bold, true);
+  assert.equal('plain_text' in updated[0], false);
+  const legacy = [{ type: 'text', text: { content: '추후 진행' }, annotations: { code: true } }];
+  assert.equal(replacePriority(legacy, 'P1')[0].text.content, '🚨');
+  const empty = replacePriority([{ type: 'text', text: { content: '화면 검토' } }], 'P3');
+  assert.equal(inlinePriority(empty), 'P3');
+  assert.equal(visibleText(empty), '화면 검토');
 });
